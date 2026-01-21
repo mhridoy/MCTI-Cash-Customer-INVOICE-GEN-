@@ -45,6 +45,7 @@ interface SavedData {
   materials: Material[]
   lastUpdated: string
   selectedBranch?: string
+  reportNumber?: string
 }
 
 // Branch options
@@ -94,6 +95,10 @@ export default function Home() {
   // View state
   const [showStockReport, setShowStockReport] = useState(false)
 
+  // Report number state
+  const [reportNumber, setReportNumber] = useState<string | null>(null)
+  const [isSavingToSheets, setIsSavingToSheets] = useState(false)
+
   // Input refs for focus management
   const nameInputRef = useRef<HTMLInputElement>(null)
   const quantityInputRef = useRef<HTMLInputElement>(null)
@@ -124,6 +129,9 @@ export default function Home() {
         if (savedData.customerName) {
           setIsCustomerSet(true)
         }
+        if (savedData.reportNumber) {
+          setReportNumber(savedData.reportNumber)
+        }
         console.log(`Loaded saved data from ${savedData.lastUpdated}`)
       } catch (error) {
         console.error("Error loading saved data:", error)
@@ -135,18 +143,70 @@ export default function Home() {
     setCurrentDate(today)
   }, [])
 
-  // Save data to localStorage whenever materials, customer name, or branch changes
+  // Save data to localStorage whenever materials, customer name, branch, or report number changes
   useEffect(() => {
-    if (materials.length > 0 || customerName || selectedBranch) {
+    if (materials.length > 0 || customerName || selectedBranch || reportNumber) {
       const dataToSave: SavedData = {
         customerName,
         materials,
         lastUpdated: new Date().toISOString(),
         selectedBranch: selectedBranch || undefined,
+        reportNumber: reportNumber || undefined,
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave))
     }
-  }, [materials, customerName, selectedBranch])
+  }, [materials, customerName, selectedBranch, reportNumber])
+
+  // Fetch report number from Google Sheets API
+  const fetchReportNumber = async () => {
+    if (!selectedBranch) return
+    try {
+      const response = await fetch(`/api/sheets?branch=${selectedBranch}`)
+      const data = await response.json()
+      if (data.success && data.reportNumber) {
+        setReportNumber(data.reportNumber)
+      }
+    } catch (error) {
+      console.error("Error fetching report number:", error)
+      toast.error("Failed to fetch report number from server")
+    }
+  }
+
+  // Save data to Google Sheets
+  const saveToGoogleSheets = async () => {
+    if (!selectedBranch || !customerName || materials.length === 0 || !reportNumber) {
+      toast.error("Please ensure all data is filled before saving")
+      return
+    }
+
+    setIsSavingToSheets(true)
+    try {
+      const response = await fetch("/api/sheets", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerName,
+          materials,
+          branch: selectedBranch,
+          reportNumber,
+        }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        toast.success(`Saved ${data.rowsAdded} items to Google Sheets (Report #${reportNumber})`)
+      } else {
+        toast.error(data.error || "Failed to save to Google Sheets")
+      }
+    } catch (error) {
+      console.error("Error saving to Google Sheets:", error)
+      toast.error("Failed to save to Google Sheets")
+    } finally {
+      setIsSavingToSheets(false)
+    }
+  }
 
   // Clear saved data
   const clearSavedData = () => {
@@ -163,6 +223,7 @@ export default function Home() {
       setUnitPrice("")
       setSuggestions([])
       setShowSuggestions(false)
+      setReportNumber(null)
     }
   }
 
@@ -173,13 +234,18 @@ export default function Home() {
   }
 
   // Handle customer form submission
-  const handleCustomerSubmit = (e: React.FormEvent) => {
+  const handleCustomerSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!customerName.trim()) {
       toast.error("Please enter a customer name")
       return
     }
     setIsCustomerSet(true)
+
+    // Fetch report number if not already set
+    if (!reportNumber) {
+      await fetchReportNumber()
+    }
 
     // Focus the first input after setting customer
     setTimeout(() => {
@@ -580,6 +646,9 @@ export default function Home() {
       doc.setFontSize(12)
       doc.text(`Customer: ${customerName}`, 14, 25)
       doc.text(`Date: ${formatDate(new Date().toISOString().split("T")[0])}`, 14, 32)
+      if (reportNumber) {
+        doc.text(`Report No: ${reportNumber}`, 14, 39)
+      }
 
       // Define the columns for the table
       const columns = ["Date", "Material Name", "Quantity", "Unit Price (﷼)", "Total Price (﷼)"]
@@ -600,7 +669,7 @@ export default function Home() {
       autoTable(doc, {
         head: [columns],
         body: data,
-        margin: { top: 40 },
+        margin: { top: reportNumber ? 47 : 40 },
         theme: "grid",
         styles: {
           cellPadding: 3,
@@ -928,10 +997,11 @@ export default function Home() {
       const wb = xlsx.utils.book_new()
 
       // Prepare data for Excel with header information
-      const excelData = [
+      const excelData: (string | number)[][] = [
         ["Company:", getCompanyName(), "", "", ""],
         ["Customer:", customerName, "", "", ""],
         ["Date:", new Date().toLocaleDateString(), "", "", ""],
+        ["Report No:", reportNumber || "N/A", "", "", ""],
         ["", "", "", "", ""], // Empty row for spacing
         ["Date", "Material Name", "Quantity", "Unit Price (﷼)", "Total Price (﷼)"],
       ]
@@ -1012,6 +1082,7 @@ export default function Home() {
         [`STOCK REPORT - ${getCompanyName()}`],
         [`Customer: ${customerName}`],
         [`Date: ${formatDate(new Date().toISOString().split("T")[0])}`],
+        [`Report No: ${reportNumber || "N/A"}`],
         [""],
       ]
 
@@ -1233,8 +1304,18 @@ export default function Home() {
                 <div>
                   <h2 className="text-xl font-bold">Customer: {customerName}</h2>
                   <p className="text-muted-foreground">Date: {formatDate(new Date().toISOString().split("T")[0])}</p>
+                  {reportNumber && (
+                    <p className="text-lg font-semibold text-primary">Report No: {reportNumber}</p>
+                  )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button 
+                    variant="default" 
+                    onClick={saveToGoogleSheets} 
+                    disabled={isSavingToSheets || materials.length === 0}
+                  >
+                    {isSavingToSheets ? "Saving..." : "Save to Google Sheets"}
+                  </Button>
                   <Button variant="outline" onClick={handleReset}>
                     Start Over
                   </Button>
