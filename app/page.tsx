@@ -1,7 +1,7 @@
 "use client"
 
-import type React from "react"
-import { useState, useRef, useEffect } from "react"
+import React, { useState, useRef, useEffect } from "react"
+import { toast } from "sonner"
 import { PlusCircle, FileDown, Printer, X, FileSpreadsheet, Package, Pencil, Check, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -44,18 +44,34 @@ interface SavedData {
   customerName: string
   materials: Material[]
   lastUpdated: string
+  selectedBranch?: string
 }
 
-// Company information
-const COMPANY_NAME = "Tabib Al Arabia, Tasliya Branch"
+// Branch options
+const BRANCH_OPTIONS = {
+  HEAD_OFFICE: "Tabib Al Arabia for Environmental Services: Head Office",
+  MCTI_TASLIYA: "MCTI Branch, Tasliya",
+} as const
+
+type BranchType = keyof typeof BRANCH_OPTIONS
 
 // LocalStorage key
 const STORAGE_KEY = "material_tracker_data"
 
 export default function Home() {
+  // Branch selection state
+  const [selectedBranch, setSelectedBranch] = useState<BranchType | null>(null)
+  const [isBranchSet, setIsBranchSet] = useState(false)
+
   // Customer information state
   const [customerName, setCustomerName] = useState("")
   const [isCustomerSet, setIsCustomerSet] = useState(false)
+
+  // Get company name based on selected branch
+  const getCompanyName = () => {
+    if (!selectedBranch) return ""
+    return BRANCH_OPTIONS[selectedBranch]
+  }
 
   // Material form state
   const [currentDate, setCurrentDate] = useState("")
@@ -101,6 +117,10 @@ export default function Home() {
         const savedData: SavedData = JSON.parse(savedDataString)
         setCustomerName(savedData.customerName)
         setMaterials(savedData.materials)
+        if (savedData.selectedBranch) {
+          setSelectedBranch(savedData.selectedBranch as BranchType)
+          setIsBranchSet(true)
+        }
         if (savedData.customerName) {
           setIsCustomerSet(true)
         }
@@ -115,22 +135,25 @@ export default function Home() {
     setCurrentDate(today)
   }, [])
 
-  // Save data to localStorage whenever materials or customer name changes
+  // Save data to localStorage whenever materials, customer name, or branch changes
   useEffect(() => {
-    if (materials.length > 0 || customerName) {
+    if (materials.length > 0 || customerName || selectedBranch) {
       const dataToSave: SavedData = {
         customerName,
         materials,
         lastUpdated: new Date().toISOString(),
+        selectedBranch: selectedBranch || undefined,
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave))
     }
-  }, [materials, customerName])
+  }, [materials, customerName, selectedBranch])
 
   // Clear saved data
   const clearSavedData = () => {
     if (confirm("Are you sure you want to clear all saved data? This cannot be undone.")) {
       localStorage.removeItem(STORAGE_KEY)
+      setSelectedBranch(null)
+      setIsBranchSet(false)
       setCustomerName("")
       setIsCustomerSet(false)
       setMaterials([])
@@ -143,11 +166,17 @@ export default function Home() {
     }
   }
 
+  // Handle branch selection
+  const handleBranchSelect = (branch: BranchType) => {
+    setSelectedBranch(branch)
+    setIsBranchSet(true)
+  }
+
   // Handle customer form submission
   const handleCustomerSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!customerName.trim()) {
-      alert("Please enter a customer name")
+      toast.error("Please enter a customer name")
       return
     }
     setIsCustomerSet(true)
@@ -165,7 +194,7 @@ export default function Home() {
     }
 
     if (!name || !quantity || !unitPrice) {
-      alert("Please fill in all material fields")
+      toast.error("Please fill in all material fields")
       return
     }
 
@@ -214,7 +243,7 @@ export default function Home() {
   // Save edited material
   const saveEdit = () => {
     if (!editName || !editQuantity || !editUnitPrice) {
-      alert("Please fill in all fields")
+      toast.error("Please fill in all fields")
       return
     }
 
@@ -533,7 +562,7 @@ export default function Home() {
   // Export to PDF
   const exportToPDF = () => {
     if (materials.length === 0) {
-      alert("No data to export")
+      toast.warning("No data to export")
       return
     }
 
@@ -546,7 +575,7 @@ export default function Home() {
 
       // Add company and customer information
       doc.setFontSize(18)
-      doc.text(COMPANY_NAME, doc.internal.pageSize.getWidth() / 2, 15, { align: "center" })
+      doc.text(getCompanyName(), doc.internal.pageSize.getWidth() / 2, 15, { align: "center" })
 
       doc.setFontSize(12)
       doc.text(`Customer: ${customerName}`, 14, 25)
@@ -605,186 +634,289 @@ export default function Home() {
       doc.save(`${customerName}_Materials_Report_${new Date().toISOString().split("T")[0]}.pdf`)
     } catch (error) {
       console.error("Error exporting to PDF:", error)
-      alert("Failed to export to PDF. Please try again.")
+      toast.error("Failed to export to PDF. Please try again.")
     }
   }
 
-  // Export stock report to PDF
+  // Export stock report to PDF - Professional full-width layout
   const exportStockToPDF = () => {
     if (materials.length === 0) {
-      alert("No data to export")
+      toast.warning("No data to export")
       return
     }
 
     try {
-      // Create PDF in portrait orientation
+      // Create PDF in portrait orientation with minimal margins for full-width layout
       const doc = new jsPDF({
         orientation: "portrait",
         unit: "mm",
       })
 
-      // Add company and customer information
-      doc.setFontSize(18)
-      doc.text(COMPANY_NAME, doc.internal.pageSize.getWidth() / 2, 15, { align: "center" })
-
-      doc.setFontSize(16)
-      doc.text("STOCK REPORT", doc.internal.pageSize.getWidth() / 2, 25, { align: "center" })
-
-      doc.setFontSize(12)
-      doc.text(`Customer: ${customerName}`, 14, 35)
-      doc.text(`Date: ${formatDate(new Date().toISOString().split("T")[0])}`, 14, 42)
-
       // Get material groups and grand totals
       const materialGroups = getMaterialGroups()
       const grandTotals = getStockGrandTotals()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const margin = 5 // Minimal margin for full-width tables
+      const tableWidth = pageWidth - (margin * 2)
+      const usableHeight = pageHeight - 12 // Leave space for page numbers
+      const colWidth = tableWidth / 2 - 2 // Width for two-column layout
 
-      // Start Y position for the first table
-      let yPos = 50
+      // Compact header
+      doc.setFontSize(12)
+      doc.setFont("helvetica", "bold")
+      doc.text(getCompanyName(), pageWidth / 2, 8, { align: "center" })
+      doc.setFontSize(10)
+      doc.text("STOCK REPORT", pageWidth / 2, 13, { align: "center" })
+      doc.setFontSize(8)
+      doc.setFont("helvetica", "normal")
+      doc.text(`Customer: ${customerName}  |  Date: ${formatDate(new Date().toISOString().split("T")[0])}`, pageWidth / 2, 18, { align: "center" })
 
-      // First, add the summary table
-      doc.setFontSize(14)
-      doc.text("SUMMARY", doc.internal.pageSize.getWidth() / 2, yPos, { align: "center" })
-      yPos += 10
+      let yPos = 22
 
-      // Define the columns for the summary table
-      const summaryColumns = ["Material Name", "Total Quantity", "Average Price (SAR)", "Total Amount (SAR)"]
+      // Summary table - full width
+      doc.setFontSize(9)
+      doc.setFont("helvetica", "bold")
+      doc.setFillColor(50, 50, 50)
+      doc.rect(margin, yPos, tableWidth, 5, "F")
+      doc.setTextColor(255, 255, 255)
+      doc.text("SUMMARY", pageWidth / 2, yPos + 3.5, { align: "center" })
+      doc.setTextColor(0, 0, 0)
+      yPos += 6
 
-      // Prepare the data for the summary table
+      const summaryColumns = ["Material Name", "Qty", "Avg Price (SAR)", "Total (SAR)"]
       const summaryData = materialGroups.map((group) => [
         group.name,
         group.totalQuantity.toFixed(2),
-        `SAR ${group.averagePrice.toFixed(2)}`,
-        `SAR ${group.totalAmount.toFixed(2)}`,
+        group.averagePrice.toFixed(2),
+        group.totalAmount.toFixed(2),
       ])
 
-      // Add grand total row
-      summaryData.push([
-        "GRAND TOTAL",
-        grandTotals.totalQuantity.toFixed(2),
-        "",
-        `SAR ${grandTotals.totalAmount.toFixed(2)}`,
-      ])
-
-      // Add summary table to the PDF
+      // Full-width summary table
       autoTable(doc, {
         head: [summaryColumns],
         body: summaryData,
         startY: yPos,
         theme: "grid",
         styles: {
-          cellPadding: 3,
-          fontSize: 10,
+          cellPadding: 1.5,
+          fontSize: 7,
           lineColor: [0, 0, 0],
-          lineWidth: 0.1,
+          lineWidth: 0.15,
         },
         headStyles: {
-          fillColor: [220, 220, 220],
+          fillColor: [180, 180, 180],
           textColor: [0, 0, 0],
           fontStyle: "bold",
+          cellPadding: 2,
         },
-        footStyles: {
-          fillColor: [240, 240, 240],
-          textColor: [0, 0, 0],
-          fontStyle: "bold",
+        columnStyles: {
+          0: { cellWidth: tableWidth * 0.4 },
+          1: { cellWidth: tableWidth * 0.15, halign: "right" },
+          2: { cellWidth: tableWidth * 0.22, halign: "right" },
+          3: { cellWidth: tableWidth * 0.23, halign: "right" },
         },
+        margin: { left: margin, right: margin },
+        tableWidth: tableWidth,
       })
 
-      // Get the Y position after the summary table
-      yPos = doc.lastAutoTable.finalY + 15
+      yPos = doc.lastAutoTable.finalY + 4
 
-      // Add a page break after the summary
-      doc.addPage()
-      yPos = 20
+      // Detailed breakdown header
+      doc.setFillColor(50, 50, 50)
+      doc.rect(margin, yPos, tableWidth, 5, "F")
+      doc.setTextColor(255, 255, 255)
+      doc.text("DETAILED BREAKDOWN", pageWidth / 2, yPos + 3.5, { align: "center" })
+      doc.setTextColor(0, 0, 0)
+      yPos += 7
 
-      // Add detailed breakdown header
-      doc.setFontSize(16)
-      doc.text("DETAILED BREAKDOWN", doc.internal.pageSize.getWidth() / 2, yPos, { align: "center" })
-      yPos += 15
+      // Two-column layout for detailed breakdown
+      let leftY = yPos
+      let rightY = yPos
+      let useLeftColumn = true
 
-      // For each material group, create a table with detailed breakdown
-      materialGroups.forEach((group) => {
+      materialGroups.forEach((group, groupIndex) => {
+        const rowHeight = 4
+        const estimatedTableHeight = (group.items.length + 3) * rowHeight + 6
+
+        // Determine which column to use
+        const currentY = useLeftColumn ? leftY : rightY
+        const xOffset = useLeftColumn ? margin : margin + colWidth + 4
+
         // Check if we need a new page
-        if (yPos > 230) {
-          doc.addPage()
-          yPos = 20
+        if (currentY + estimatedTableHeight > usableHeight) {
+          if (useLeftColumn) {
+            // Try right column first
+            if (rightY + estimatedTableHeight <= usableHeight) {
+              useLeftColumn = false
+            } else {
+              // Both columns full, new page
+              doc.addPage()
+              leftY = 10
+              rightY = 10
+              useLeftColumn = true
+            }
+          } else {
+            // Right column full, check left
+            if (leftY + estimatedTableHeight <= usableHeight) {
+              useLeftColumn = true
+            } else {
+              // Both columns full, new page
+              doc.addPage()
+              leftY = 10
+              rightY = 10
+              useLeftColumn = true
+            }
+          }
         }
 
-        // Add material name as header
-        doc.setFontSize(14)
-        doc.text(group.name, doc.internal.pageSize.getWidth() / 2, yPos, { align: "center" })
-        yPos += 10
+        const startY = useLeftColumn ? leftY : rightY
+        const startX = useLeftColumn ? margin : margin + colWidth + 4
 
-        // Define the columns for the table
-        const columns = ["Date", "Quantity", "Unit Price (SAR)", "Total Price (SAR)"]
+        // Material name header
+        doc.setFontSize(7)
+        doc.setFont("helvetica", "bold")
+        doc.setFillColor(100, 100, 100)
+        doc.rect(startX, startY, colWidth, 4, "F")
+        doc.setTextColor(255, 255, 255)
+        doc.text(group.name, startX + 2, startY + 2.8)
+        doc.setTextColor(0, 0, 0)
 
-        // Prepare the data for the table
+        const columns = ["Date", "Qty", "Price", "Total"]
         const data = group.items.map((item) => [
           formatDate(item.date),
           item.quantity.toFixed(2),
-          `SAR ${item.unitPrice.toFixed(2)}`,
-          `SAR ${(item.quantity * item.unitPrice).toFixed(2)}`,
+          item.unitPrice.toFixed(2),
+          (item.quantity * item.unitPrice).toFixed(2),
         ])
 
-        // Add a subtotal row
-        data.push([
+        const footData = [[
           "Subtotal",
           group.totalQuantity.toFixed(2),
-          `SAR ${group.averagePrice.toFixed(2)}`,
-          `SAR ${group.totalAmount.toFixed(2)}`,
-        ])
+          group.averagePrice.toFixed(2),
+          group.totalAmount.toFixed(2),
+        ]]
 
-        // Add table to the PDF
         autoTable(doc, {
           head: [columns],
           body: data,
-          startY: yPos,
+          foot: footData,
+          startY: startY + 4,
           theme: "grid",
           styles: {
-            cellPadding: 3,
-            fontSize: 10,
+            cellPadding: 1,
+            fontSize: 6,
             lineColor: [0, 0, 0],
             lineWidth: 0.1,
           },
           headStyles: {
+            fillColor: [200, 200, 200],
+            textColor: [0, 0, 0],
+            fontStyle: "bold",
+            cellPadding: 1.2,
+          },
+          footStyles: {
             fillColor: [220, 220, 220],
             textColor: [0, 0, 0],
             fontStyle: "bold",
           },
-          footStyles: {
-            fillColor: [240, 240, 240],
-            textColor: [0, 0, 0],
-            fontStyle: "bold",
+          columnStyles: {
+            0: { cellWidth: colWidth * 0.3 },
+            1: { cellWidth: colWidth * 0.2, halign: "right" },
+            2: { cellWidth: colWidth * 0.25, halign: "right" },
+            3: { cellWidth: colWidth * 0.25, halign: "right" },
           },
+          margin: { left: startX, right: pageWidth - startX - colWidth },
+          tableWidth: colWidth,
+          showFoot: "lastPage",
         })
 
-        // Update Y position for the next table
-        yPos = doc.lastAutoTable.finalY + 15
+        const finalY = doc.lastAutoTable.finalY + 3
+
+        if (useLeftColumn) {
+          leftY = finalY
+          useLeftColumn = false
+        } else {
+          rightY = finalY
+          useLeftColumn = true
+        }
+      })
+
+      // Grand total at the end - full width
+      yPos = Math.max(leftY, rightY) + 3
+      if (yPos + 15 > usableHeight) {
+        doc.addPage()
+        yPos = 10
+      }
+
+      doc.setFillColor(50, 50, 50)
+      doc.rect(margin, yPos, tableWidth, 5, "F")
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(9)
+      doc.setFont("helvetica", "bold")
+      doc.text("GRAND TOTAL", pageWidth / 2, yPos + 3.5, { align: "center" })
+      doc.setTextColor(0, 0, 0)
+      yPos += 6
+
+      autoTable(doc, {
+        head: [["Description", "Total Quantity", "Total Amount (SAR)"]],
+        body: [[
+          "All Materials",
+          grandTotals.totalQuantity.toFixed(2),
+          grandTotals.totalAmount.toFixed(2),
+        ]],
+        startY: yPos,
+        theme: "grid",
+        styles: {
+          cellPadding: 2,
+          fontSize: 8,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.2,
+          fontStyle: "bold",
+        },
+        headStyles: {
+          fillColor: [80, 80, 80],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+        },
+        bodyStyles: {
+          fillColor: [220, 220, 220],
+          fontStyle: "bold",
+        },
+        columnStyles: {
+          0: { cellWidth: tableWidth * 0.4 },
+          1: { cellWidth: tableWidth * 0.3, halign: "right" },
+          2: { cellWidth: tableWidth * 0.3, halign: "right" },
+        },
+        margin: { left: margin, right: margin },
+        tableWidth: tableWidth,
       })
 
       // Add page numbers
       const pageCount = doc.getNumberOfPages()
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i)
-        doc.setFontSize(10)
+        doc.setFontSize(7)
+        doc.setFont("helvetica", "normal")
         doc.text(
           `Page ${i} of ${pageCount}`,
-          doc.internal.pageSize.getWidth() - 20,
-          doc.internal.pageSize.getHeight() - 10,
+          pageWidth / 2,
+          pageHeight - 3,
+          { align: "center" }
         )
       }
 
-      // Save the PDF
       doc.save(`Stock_Report_${customerName}_${new Date().toISOString().split("T")[0]}.pdf`)
     } catch (error) {
       console.error("Error exporting stock to PDF:", error)
-      alert("Failed to export stock to PDF. Please try again.")
+      toast.error("Failed to export stock to PDF. Please try again.")
     }
   }
 
   // Export to Excel
   const exportToExcel = async () => {
     if (materials.length === 0) {
-      alert("No data to export")
+      toast.warning("No data to export")
       return
     }
 
@@ -797,7 +929,7 @@ export default function Home() {
 
       // Prepare data for Excel with header information
       const excelData = [
-        ["Company:", COMPANY_NAME, "", "", ""],
+        ["Company:", getCompanyName(), "", "", ""],
         ["Customer:", customerName, "", "", ""],
         ["Date:", new Date().toLocaleDateString(), "", "", ""],
         ["", "", "", "", ""], // Empty row for spacing
@@ -853,14 +985,14 @@ export default function Home() {
       URL.revokeObjectURL(url)
     } catch (error) {
       console.error("Error exporting to Excel:", error)
-      alert("Failed to export to Excel. Please try again.")
+      toast.error("Failed to export to Excel. Please try again.")
     }
   }
 
   // Export stock items to Excel
   const exportStockToExcel = async () => {
     if (materials.length === 0) {
-      alert("No data to export")
+      toast.warning("No data to export")
       return
     }
 
@@ -877,7 +1009,7 @@ export default function Home() {
 
       // Prepare header data for Excel
       const headerData = [
-        [`STOCK REPORT - ${COMPANY_NAME}`],
+        [`STOCK REPORT - ${getCompanyName()}`],
         [`Customer: ${customerName}`],
         [`Date: ${formatDate(new Date().toISOString().split("T")[0])}`],
         [""],
@@ -989,7 +1121,7 @@ export default function Home() {
       URL.revokeObjectURL(url)
     } catch (error) {
       console.error("Error exporting stock to Excel:", error)
-      alert("Failed to export stock to Excel. Please try again.")
+      toast.error("Failed to export stock to Excel. Please try again.")
     }
   }
 
@@ -1030,10 +1162,42 @@ export default function Home() {
 
   return (
     <main className="container mx-auto py-8 px-4">
-      <h1 className="text-3xl font-bold text-center mb-2 print:hidden">{COMPANY_NAME}</h1>
-      <h2 className="text-xl text-center mb-8 print:hidden">Material Tracking System</h2>
+      {isBranchSet && (
+        <>
+          <h1 className="text-3xl font-bold text-center mb-2 print:hidden">{getCompanyName()}</h1>
+          <h2 className="text-xl text-center mb-8 print:hidden">Material Tracking System</h2>
+        </>
+      )}
 
-      {!isCustomerSet ? (
+      {!isBranchSet ? (
+        // Branch Selection Form
+        <Card className="mb-8 max-w-md mx-auto">
+          <CardHeader>
+            <CardTitle className="text-center">Select Branch</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-center text-muted-foreground mb-4">
+                Please select the branch you are working from:
+              </p>
+              <Button
+                onClick={() => handleBranchSelect("HEAD_OFFICE")}
+                className="w-full text-lg py-6 h-auto whitespace-normal"
+                variant="outline"
+              >
+                {BRANCH_OPTIONS.HEAD_OFFICE}
+              </Button>
+              <Button
+                onClick={() => handleBranchSelect("MCTI_TASLIYA")}
+                className="w-full text-lg py-6 h-auto whitespace-normal"
+                variant="outline"
+              >
+                {BRANCH_OPTIONS.MCTI_TASLIYA}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : !isCustomerSet ? (
         // Customer Information Form
         <Card className="mb-8 max-w-md mx-auto">
           <CardHeader>
@@ -1234,11 +1398,11 @@ export default function Home() {
             <div ref={contentRef} className="print:block">
               {/* Report Header for Print/PDF */}
               <div className="print:block hidden mb-8">
-                <h1 className="text-3xl font-bold text-center">{COMPANY_NAME}</h1>
-                <p className="text-center text-muted-foreground">
-                  Generated on: {formatDate(new Date().toISOString().split("T")[0])}
-                </p>
-                <p className="text-center font-medium mt-2">Customer: {customerName}</p>
+                                <h1 className="text-3xl font-bold text-center">{getCompanyName()}</h1>
+                                <p className="text-center text-muted-foreground">
+                                  Generated on: {formatDate(new Date().toISOString().split("T")[0])}
+                                </p>
+                                <p className="text-center font-medium mt-2">Customer: {customerName}</p>
               </div>
 
               {/* Materials Table */}
@@ -1264,7 +1428,7 @@ export default function Home() {
                         </thead>
                         <tbody>
                           {sortedDates.map((date, dateIndex) => (
-                            <>
+                            <React.Fragment key={date}>
                               {groupedMaterials[date].map((material, index) => (
                                 <tr key={material.id} className="border-b hover:bg-muted/50">
                                   {editingId === material.id ? (
@@ -1420,7 +1584,7 @@ export default function Home() {
                               <tr className="h-4 bg-muted/10">
                                 <td colSpan={6}></td>
                               </tr>
-                            </>
+                            </React.Fragment>
                           ))}
                         </tbody>
                         <tfoot className="border-t-2 border-muted">
@@ -1445,8 +1609,8 @@ export default function Home() {
             <div ref={stockReportRef} className="print:block">
               {/* Report Header for Print */}
               <div className="mb-8">
-                <h1 className="text-3xl font-bold text-center">{COMPANY_NAME}</h1>
-                <h2 className="text-xl text-center">Stock Report</h2>
+                                <h1 className="text-3xl font-bold text-center">{getCompanyName()}</h1>
+                                <h2 className="text-xl text-center">Stock Report</h2>
                 <p className="text-center text-muted-foreground">
                   Generated on: {formatDate(new Date().toISOString().split("T")[0])}
                 </p>
@@ -1505,10 +1669,10 @@ export default function Home() {
                   {materials.length === 0 ? (
                     <p className="text-center text-muted-foreground py-4">No materials added yet</p>
                   ) : (
-                    <div>
+                    <div className="detailed-breakdown-grid">
                       {getMaterialGroups().map((group) => (
-                        <div key={group.name} className="mb-8">
-                          <h3 className="text-lg font-bold mb-2">{group.name}</h3>
+                        <div key={group.name} className="material-group">
+                          <h3 className="text-lg font-bold mb-1">{group.name}</h3>
                           <table className="w-full border-collapse stock-report-table">
                             <thead>
                               <tr>
