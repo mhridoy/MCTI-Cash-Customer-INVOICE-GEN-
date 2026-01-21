@@ -609,7 +609,7 @@ export default function Home() {
     }
   }
 
-  // Export stock report to PDF
+  // Export stock report to PDF - Professional compact layout
   const exportStockToPDF = () => {
     if (materials.length === 0) {
       toast.warning("No data to export")
@@ -617,7 +617,7 @@ export default function Home() {
     }
 
     try {
-      // Create PDF in portrait orientation
+      // Create PDF in portrait orientation with compact margins
       const doc = new jsPDF({
         orientation: "portrait",
         unit: "mm",
@@ -626,106 +626,112 @@ export default function Home() {
       // Get material groups and grand totals
       const materialGroups = getMaterialGroups()
       const grandTotals = getStockGrandTotals()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const margin = 10
+      const usableHeight = pageHeight - 20 // Leave space for page numbers
 
-      // Add header function for each page
-      const addHeader = () => {
-        doc.setFontSize(18)
-        doc.text(COMPANY_NAME, doc.internal.pageSize.getWidth() / 2, 15, { align: "center" })
-        doc.setFontSize(16)
-        doc.text("STOCK REPORT", doc.internal.pageSize.getWidth() / 2, 25, { align: "center" })
-        doc.setFontSize(12)
-        doc.text(`Customer: ${customerName}`, 14, 35)
-        doc.text(`Date: ${formatDate(new Date().toISOString().split("T")[0])}`, 14, 42)
+      // Compact header function
+      const addHeader = (isFirstPage: boolean) => {
+        if (isFirstPage) {
+          doc.setFontSize(14)
+          doc.text(COMPANY_NAME, pageWidth / 2, 10, { align: "center" })
+          doc.setFontSize(11)
+          doc.text("STOCK REPORT", pageWidth / 2, 16, { align: "center" })
+          doc.setFontSize(9)
+          doc.text(`Customer: ${customerName}  |  Date: ${formatDate(new Date().toISOString().split("T")[0])}`, pageWidth / 2, 22, { align: "center" })
+        }
       }
 
       // Add header to first page
-      addHeader()
+      addHeader(true)
 
-      // Start Y position for the first table
-      let yPos = 50
+      // Start Y position - compact
+      let yPos = 28
 
-      // First, add the summary table (without grand total - it will be at the end)
-      doc.setFontSize(14)
-      doc.text("SUMMARY", doc.internal.pageSize.getWidth() / 2, yPos, { align: "center" })
-      yPos += 10
+      // Summary table with compact styling
+      doc.setFontSize(10)
+      doc.setFont("helvetica", "bold")
+      doc.text("SUMMARY", margin, yPos)
+      yPos += 5
 
-      // Define the columns for the summary table
-      const summaryColumns = ["Material Name", "Total Quantity", "Average Price (SAR)", "Total Amount (SAR)"]
-
-      // Prepare the data for the summary table (without grand total)
+      const summaryColumns = ["Material", "Qty", "Avg Price (SAR)", "Total (SAR)"]
       const summaryData = materialGroups.map((group) => [
         group.name,
         group.totalQuantity.toFixed(2),
-        `SAR ${group.averagePrice.toFixed(2)}`,
-        `SAR ${group.totalAmount.toFixed(2)}`,
+        group.averagePrice.toFixed(2),
+        group.totalAmount.toFixed(2),
       ])
 
-      // Add summary table to the PDF (without grand total row)
+      // Add summary table - compact
       autoTable(doc, {
         head: [summaryColumns],
         body: summaryData,
         startY: yPos,
         theme: "grid",
         styles: {
-          cellPadding: 3,
-          fontSize: 10,
+          cellPadding: 1.5,
+          fontSize: 8,
           lineColor: [0, 0, 0],
           lineWidth: 0.1,
         },
         headStyles: {
-          fillColor: [220, 220, 220],
+          fillColor: [200, 200, 200],
           textColor: [0, 0, 0],
           fontStyle: "bold",
+          cellPadding: 2,
         },
-        showFoot: "never",
+        columnStyles: {
+          0: { cellWidth: 60 },
+          1: { cellWidth: 25, halign: "right" },
+          2: { cellWidth: 35, halign: "right" },
+          3: { cellWidth: 35, halign: "right" },
+        },
+        margin: { left: margin, right: margin },
       })
 
-      // Get the Y position after the summary table
-      yPos = doc.lastAutoTable.finalY + 15
+      yPos = doc.lastAutoTable.finalY + 8
 
-      // Add a page break after the summary
-      doc.addPage()
-      yPos = 20
+      // Detailed breakdown header
+      doc.setFontSize(10)
+      doc.setFont("helvetica", "bold")
+      doc.text("DETAILED BREAKDOWN", margin, yPos)
+      yPos += 5
 
-      // Add detailed breakdown header
-      doc.setFontSize(16)
-      doc.text("DETAILED BREAKDOWN", doc.internal.pageSize.getWidth() / 2, yPos, { align: "center" })
-      yPos += 15
-
-      // For each material group, create a table with detailed breakdown
+      // For each material group, create a compact table
       materialGroups.forEach((group, groupIndex) => {
-        // Check if we need a new page (leave space for subtotal)
-        const estimatedTableHeight = (group.items.length + 2) * 10
-        if (yPos + estimatedTableHeight > 250) {
+        // Calculate estimated height for this group (header + rows + subtotal)
+        const rowHeight = 5 // Approximate row height in mm
+        const estimatedTableHeight = (group.items.length + 3) * rowHeight
+
+        // Check if we need a new page - ensure entire group fits
+        if (yPos + estimatedTableHeight > usableHeight) {
           doc.addPage()
-          yPos = 20
+          yPos = 12
         }
 
-        // Add material name as header
-        doc.setFontSize(14)
-        doc.text(group.name, doc.internal.pageSize.getWidth() / 2, yPos, { align: "center" })
-        yPos += 10
+        // Material name - compact
+        doc.setFontSize(9)
+        doc.setFont("helvetica", "bold")
+        doc.text(group.name, margin, yPos)
+        yPos += 4
 
-        // Define the columns for the table
-        const columns = ["Date", "Quantity", "Unit Price (SAR)", "Total Price (SAR)"]
-
-        // Prepare the data for the table (without subtotal - it goes in foot)
+        const columns = ["Date", "Qty", "Unit Price", "Total"]
         const data = group.items.map((item) => [
           formatDate(item.date),
           item.quantity.toFixed(2),
-          `SAR ${item.unitPrice.toFixed(2)}`,
-          `SAR ${(item.quantity * item.unitPrice).toFixed(2)}`,
+          item.unitPrice.toFixed(2),
+          (item.quantity * item.unitPrice).toFixed(2),
         ])
 
-        // Subtotal row for the foot
         const footData = [[
           "Subtotal",
           group.totalQuantity.toFixed(2),
-          `Avg: SAR ${group.averagePrice.toFixed(2)}`,
-          `SAR ${group.totalAmount.toFixed(2)}`,
+          `Avg: ${group.averagePrice.toFixed(2)}`,
+          group.totalAmount.toFixed(2),
         ]]
 
-        // Add table to the PDF
+        // Add compact table
         autoTable(doc, {
           head: [columns],
           body: data,
@@ -733,8 +739,8 @@ export default function Home() {
           startY: yPos,
           theme: "grid",
           styles: {
-            cellPadding: 3,
-            fontSize: 10,
+            cellPadding: 1.2,
+            fontSize: 7,
             lineColor: [0, 0, 0],
             lineWidth: 0.1,
           },
@@ -742,76 +748,85 @@ export default function Home() {
             fillColor: [220, 220, 220],
             textColor: [0, 0, 0],
             fontStyle: "bold",
+            cellPadding: 1.5,
           },
           footStyles: {
-            fillColor: [240, 240, 240],
+            fillColor: [235, 235, 235],
             textColor: [0, 0, 0],
             fontStyle: "bold",
           },
+          columnStyles: {
+            0: { cellWidth: 35 },
+            1: { cellWidth: 25, halign: "right" },
+            2: { cellWidth: 30, halign: "right" },
+            3: { cellWidth: 30, halign: "right" },
+          },
+          margin: { left: margin, right: margin },
           showFoot: "lastPage",
+          pageBreak: "avoid",
         })
 
-        // Update Y position for the next table
-        yPos = doc.lastAutoTable.finalY + 15
+        yPos = doc.lastAutoTable.finalY + 6
       })
 
-      // Add GRAND TOTAL at the very end (only once)
-      // Check if we need a new page for grand total
-      if (yPos > 250) {
+      // Grand total at the end - compact but prominent
+      if (yPos + 20 > usableHeight) {
         doc.addPage()
-        yPos = 20
+        yPos = 12
       }
 
-      // Add grand total section
-      doc.setFontSize(14)
+      doc.setFontSize(10)
       doc.setFont("helvetica", "bold")
-      doc.text("GRAND TOTAL", doc.internal.pageSize.getWidth() / 2, yPos, { align: "center" })
-      yPos += 10
+      doc.text("GRAND TOTAL", margin, yPos)
+      yPos += 4
 
-      // Grand total table
       autoTable(doc, {
-        head: [["Description", "Total Quantity", "", "Total Amount (SAR)"]],
+        head: [["Description", "Total Quantity", "Total Amount (SAR)"]],
         body: [[
           "All Materials",
           grandTotals.totalQuantity.toFixed(2),
-          "",
-          `SAR ${grandTotals.totalAmount.toFixed(2)}`,
+          grandTotals.totalAmount.toFixed(2),
         ]],
         startY: yPos,
         theme: "grid",
         styles: {
-          cellPadding: 5,
-          fontSize: 12,
+          cellPadding: 2,
+          fontSize: 9,
           lineColor: [0, 0, 0],
-          lineWidth: 0.2,
+          lineWidth: 0.15,
           fontStyle: "bold",
         },
         headStyles: {
-          fillColor: [100, 100, 100],
+          fillColor: [80, 80, 80],
           textColor: [255, 255, 255],
           fontStyle: "bold",
         },
         bodyStyles: {
-          fillColor: [240, 240, 240],
+          fillColor: [230, 230, 230],
           fontStyle: "bold",
         },
+        columnStyles: {
+          0: { cellWidth: 60 },
+          1: { cellWidth: 40, halign: "right" },
+          2: { cellWidth: 50, halign: "right" },
+        },
+        margin: { left: margin, right: margin },
       })
 
-      // Add page numbers to all pages
+      // Add page numbers - compact
       const pageCount = doc.getNumberOfPages()
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i)
-        doc.setFontSize(10)
+        doc.setFontSize(8)
         doc.setFont("helvetica", "normal")
         doc.text(
           `Page ${i} of ${pageCount}`,
-          doc.internal.pageSize.getWidth() / 2,
-          doc.internal.pageSize.getHeight() - 10,
+          pageWidth / 2,
+          pageHeight - 5,
           { align: "center" }
         )
       }
 
-      // Save the PDF
       doc.save(`Stock_Report_${customerName}_${new Date().toISOString().split("T")[0]}.pdf`)
     } catch (error) {
       console.error("Error exporting stock to PDF:", error)
@@ -1545,8 +1560,8 @@ export default function Home() {
                   ) : (
                     <div>
                       {getMaterialGroups().map((group) => (
-                        <div key={group.name} className="mb-8">
-                          <h3 className="text-lg font-bold mb-2">{group.name}</h3>
+                        <div key={group.name} className="mb-4 material-group">
+                          <h3 className="text-lg font-bold mb-1">{group.name}</h3>
                           <table className="w-full border-collapse stock-report-table">
                             <thead>
                               <tr>
