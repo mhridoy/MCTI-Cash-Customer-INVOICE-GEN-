@@ -44,18 +44,34 @@ interface SavedData {
   customerName: string
   materials: Material[]
   lastUpdated: string
+  selectedBranch?: string
 }
 
-// Company information
-const COMPANY_NAME = "Tabib Al Arabia, Tasliya Branch"
+// Branch options
+const BRANCH_OPTIONS = {
+  HEAD_OFFICE: "Tabib Al Arabia for Environmental Services: Head Office",
+  MCTI_TASLIYA: "MCTI Branch, Tasliya",
+} as const
+
+type BranchType = keyof typeof BRANCH_OPTIONS
 
 // LocalStorage key
 const STORAGE_KEY = "material_tracker_data"
 
 export default function Home() {
+  // Branch selection state
+  const [selectedBranch, setSelectedBranch] = useState<BranchType | null>(null)
+  const [isBranchSet, setIsBranchSet] = useState(false)
+
   // Customer information state
   const [customerName, setCustomerName] = useState("")
   const [isCustomerSet, setIsCustomerSet] = useState(false)
+
+  // Get company name based on selected branch
+  const getCompanyName = () => {
+    if (!selectedBranch) return ""
+    return BRANCH_OPTIONS[selectedBranch]
+  }
 
   // Material form state
   const [currentDate, setCurrentDate] = useState("")
@@ -101,6 +117,10 @@ export default function Home() {
         const savedData: SavedData = JSON.parse(savedDataString)
         setCustomerName(savedData.customerName)
         setMaterials(savedData.materials)
+        if (savedData.selectedBranch) {
+          setSelectedBranch(savedData.selectedBranch as BranchType)
+          setIsBranchSet(true)
+        }
         if (savedData.customerName) {
           setIsCustomerSet(true)
         }
@@ -115,22 +135,25 @@ export default function Home() {
     setCurrentDate(today)
   }, [])
 
-  // Save data to localStorage whenever materials or customer name changes
+  // Save data to localStorage whenever materials, customer name, or branch changes
   useEffect(() => {
-    if (materials.length > 0 || customerName) {
+    if (materials.length > 0 || customerName || selectedBranch) {
       const dataToSave: SavedData = {
         customerName,
         materials,
         lastUpdated: new Date().toISOString(),
+        selectedBranch: selectedBranch || undefined,
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave))
     }
-  }, [materials, customerName])
+  }, [materials, customerName, selectedBranch])
 
   // Clear saved data
   const clearSavedData = () => {
     if (confirm("Are you sure you want to clear all saved data? This cannot be undone.")) {
       localStorage.removeItem(STORAGE_KEY)
+      setSelectedBranch(null)
+      setIsBranchSet(false)
       setCustomerName("")
       setIsCustomerSet(false)
       setMaterials([])
@@ -141,6 +164,12 @@ export default function Home() {
       setSuggestions([])
       setShowSuggestions(false)
     }
+  }
+
+  // Handle branch selection
+  const handleBranchSelect = (branch: BranchType) => {
+    setSelectedBranch(branch)
+    setIsBranchSet(true)
   }
 
   // Handle customer form submission
@@ -546,7 +575,7 @@ export default function Home() {
 
       // Add company and customer information
       doc.setFontSize(18)
-      doc.text(COMPANY_NAME, doc.internal.pageSize.getWidth() / 2, 15, { align: "center" })
+      doc.text(getCompanyName(), doc.internal.pageSize.getWidth() / 2, 15, { align: "center" })
 
       doc.setFontSize(12)
       doc.text(`Customer: ${customerName}`, 14, 25)
@@ -636,7 +665,7 @@ export default function Home() {
       // Compact header
       doc.setFontSize(12)
       doc.setFont("helvetica", "bold")
-      doc.text(COMPANY_NAME, pageWidth / 2, 8, { align: "center" })
+      doc.text(getCompanyName(), pageWidth / 2, 8, { align: "center" })
       doc.setFontSize(10)
       doc.text("STOCK REPORT", pageWidth / 2, 13, { align: "center" })
       doc.setFontSize(8)
@@ -900,7 +929,7 @@ export default function Home() {
 
       // Prepare data for Excel with header information
       const excelData = [
-        ["Company:", COMPANY_NAME, "", "", ""],
+        ["Company:", getCompanyName(), "", "", ""],
         ["Customer:", customerName, "", "", ""],
         ["Date:", new Date().toLocaleDateString(), "", "", ""],
         ["", "", "", "", ""], // Empty row for spacing
@@ -980,7 +1009,7 @@ export default function Home() {
 
       // Prepare header data for Excel
       const headerData = [
-        [`STOCK REPORT - ${COMPANY_NAME}`],
+        [`STOCK REPORT - ${getCompanyName()}`],
         [`Customer: ${customerName}`],
         [`Date: ${formatDate(new Date().toISOString().split("T")[0])}`],
         [""],
@@ -1133,10 +1162,42 @@ export default function Home() {
 
   return (
     <main className="container mx-auto py-8 px-4">
-      <h1 className="text-3xl font-bold text-center mb-2 print:hidden">{COMPANY_NAME}</h1>
-      <h2 className="text-xl text-center mb-8 print:hidden">Material Tracking System</h2>
+      {isBranchSet && (
+        <>
+          <h1 className="text-3xl font-bold text-center mb-2 print:hidden">{getCompanyName()}</h1>
+          <h2 className="text-xl text-center mb-8 print:hidden">Material Tracking System</h2>
+        </>
+      )}
 
-      {!isCustomerSet ? (
+      {!isBranchSet ? (
+        // Branch Selection Form
+        <Card className="mb-8 max-w-md mx-auto">
+          <CardHeader>
+            <CardTitle className="text-center">Select Branch</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-center text-muted-foreground mb-4">
+                Please select the branch you are working from:
+              </p>
+              <Button
+                onClick={() => handleBranchSelect("HEAD_OFFICE")}
+                className="w-full text-lg py-6 h-auto whitespace-normal"
+                variant="outline"
+              >
+                {BRANCH_OPTIONS.HEAD_OFFICE}
+              </Button>
+              <Button
+                onClick={() => handleBranchSelect("MCTI_TASLIYA")}
+                className="w-full text-lg py-6 h-auto whitespace-normal"
+                variant="outline"
+              >
+                {BRANCH_OPTIONS.MCTI_TASLIYA}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : !isCustomerSet ? (
         // Customer Information Form
         <Card className="mb-8 max-w-md mx-auto">
           <CardHeader>
@@ -1337,11 +1398,11 @@ export default function Home() {
             <div ref={contentRef} className="print:block">
               {/* Report Header for Print/PDF */}
               <div className="print:block hidden mb-8">
-                <h1 className="text-3xl font-bold text-center">{COMPANY_NAME}</h1>
-                <p className="text-center text-muted-foreground">
-                  Generated on: {formatDate(new Date().toISOString().split("T")[0])}
-                </p>
-                <p className="text-center font-medium mt-2">Customer: {customerName}</p>
+                                <h1 className="text-3xl font-bold text-center">{getCompanyName()}</h1>
+                                <p className="text-center text-muted-foreground">
+                                  Generated on: {formatDate(new Date().toISOString().split("T")[0])}
+                                </p>
+                                <p className="text-center font-medium mt-2">Customer: {customerName}</p>
               </div>
 
               {/* Materials Table */}
@@ -1548,8 +1609,8 @@ export default function Home() {
             <div ref={stockReportRef} className="print:block">
               {/* Report Header for Print */}
               <div className="mb-8">
-                <h1 className="text-3xl font-bold text-center">{COMPANY_NAME}</h1>
-                <h2 className="text-xl text-center">Stock Report</h2>
+                                <h1 className="text-3xl font-bold text-center">{getCompanyName()}</h1>
+                                <h2 className="text-xl text-center">Stock Report</h2>
                 <p className="text-center text-muted-foreground">
                   Generated on: {formatDate(new Date().toISOString().split("T")[0])}
                 </p>
