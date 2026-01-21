@@ -112,6 +112,24 @@
     background-color: #f2f2f2 !important;
     font-weight: bold;
   }
+
+  /* IMPORTANT: Prevent tfoot from repeating on every page */
+  /* Change display from table-footer-group to table-row-group */
+  tfoot {
+    display: table-row-group;
+  }
+
+  /* Ensure grand total row stands out */
+  tfoot tr.grand-total {
+    background-color: #e0e0e0 !important;
+    font-weight: bold;
+  }
+
+  /* Ensure subtotal rows stand out */
+  tfoot tr.group-total {
+    background-color: #f0f0f0 !important;
+    font-weight: 600;
+  }
 }
 
 /* Stock report specific styles - improved for better display */
