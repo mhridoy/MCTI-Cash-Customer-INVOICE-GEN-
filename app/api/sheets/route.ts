@@ -96,22 +96,64 @@ async function ensureSheetExists(sheets: ReturnType<typeof google.sheets>, sheet
   }
 }
 
+async function getSheetId(sheets: ReturnType<typeof google.sheets>, sheetName: string): Promise<number | null> {
+  try {
+    const spreadsheet = await sheets.spreadsheets.get({
+      spreadsheetId: SPREADSHEET_ID,
+    })
+    
+    const sheet = spreadsheet.data.sheets?.find(
+      (s) => s.properties?.title === sheetName
+    )
+    
+    return sheet?.properties?.sheetId ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const branch = searchParams.get("branch") || "MCTI_TASLIYA"
+    const action = searchParams.get("action") || "getReportNumber"
     
     const sheets = await getGoogleSheetsClient()
     const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice" : "MCTI_Tasliya"
     
     await ensureSheetExists(sheets, sheetName)
     
-    const reportNumber = await getNextReportNumber(sheets, branch)
+    if (action === "getData") {
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!A:H`,
+      })
+      
+      const values = response.data.values || []
+      if (values.length <= 1) {
+        return NextResponse.json({ data: [], success: true })
+      }
+      
+      const data = values.slice(1).map((row, index) => ({
+        rowIndex: index + 2,
+        reportNumber: row[0] || "",
+        date: row[1] || "",
+        customerName: row[2] || "",
+        materialName: row[3] || "",
+        quantity: parseFloat(row[4]) || 0,
+        unitPrice: parseFloat(row[5]) || 0,
+        totalPrice: parseFloat(row[6]) || 0,
+        branch: row[7] || "",
+      }))
+      
+      return NextResponse.json({ data, success: true })
+    }
     
+    const reportNumber = await getNextReportNumber(sheets, branch)
     return NextResponse.json({ reportNumber, success: true })
   } catch (error) {
-    console.error("Error getting report number:", error)
-    return NextResponse.json({ error: "Failed to get report number", success: false }, { status: 500 })
+    console.error("Error in GET:", error)
+    return NextResponse.json({ error: "Failed to process request", success: false }, { status: 500 })
   }
 }
 
@@ -153,5 +195,78 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error saving to Google Sheets:", error)
     return NextResponse.json({ error: "Failed to save to Google Sheets", success: false }, { status: 500 })
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { branch, rowIndex, date, customerName, materialName, quantity, unitPrice } = body
+    
+    if (!branch || !rowIndex || !materialName) {
+      return NextResponse.json({ error: "Missing required fields", success: false }, { status: 400 })
+    }
+    
+    const sheets = await getGoogleSheetsClient()
+    const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice" : "MCTI_Tasliya"
+    
+    const totalPrice = quantity * unitPrice
+    
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${sheetName}!B${rowIndex}:G${rowIndex}`,
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [[date, customerName, materialName, quantity, unitPrice, totalPrice]],
+      },
+    })
+    
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error updating record:", error)
+    return NextResponse.json({ error: "Failed to update record", success: false }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const branch = searchParams.get("branch") || "MCTI_TASLIYA"
+    const rowIndex = parseInt(searchParams.get("rowIndex") || "0", 10)
+    
+    if (!rowIndex || rowIndex < 2) {
+      return NextResponse.json({ error: "Invalid row index", success: false }, { status: 400 })
+    }
+    
+    const sheets = await getGoogleSheetsClient()
+    const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice" : "MCTI_Tasliya"
+    
+    const sheetId = await getSheetId(sheets, sheetName)
+    if (sheetId === null) {
+      return NextResponse.json({ error: "Sheet not found", success: false }, { status: 404 })
+    }
+    
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId: sheetId,
+                dimension: "ROWS",
+                startIndex: rowIndex - 1,
+                endIndex: rowIndex,
+              },
+            },
+          },
+        ],
+      },
+    })
+    
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error deleting record:", error)
+    return NextResponse.json({ error: "Failed to delete record", success: false }, { status: 500 })
   }
 }

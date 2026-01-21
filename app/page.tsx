@@ -99,6 +99,28 @@ export default function Home() {
   const [reportNumber, setReportNumber] = useState<string | null>(null)
   const [isSavingToSheets, setIsSavingToSheets] = useState(false)
 
+  // Database view state
+  interface DatabaseRecord {
+    rowIndex: number
+    reportNumber: string
+    date: string
+    customerName: string
+    materialName: string
+    quantity: number
+    unitPrice: number
+    totalPrice: number
+    branch: string
+  }
+  const [showDatabaseView, setShowDatabaseView] = useState(false)
+  const [databaseRecords, setDatabaseRecords] = useState<DatabaseRecord[]>([])
+  const [isLoadingDatabase, setIsLoadingDatabase] = useState(false)
+  const [editingDbRecord, setEditingDbRecord] = useState<number | null>(null)
+  const [dbEditDate, setDbEditDate] = useState("")
+  const [dbEditCustomerName, setDbEditCustomerName] = useState("")
+  const [dbEditMaterialName, setDbEditMaterialName] = useState("")
+  const [dbEditQuantity, setDbEditQuantity] = useState("")
+  const [dbEditUnitPrice, setDbEditUnitPrice] = useState("")
+
   // Input refs for focus management
   const nameInputRef = useRef<HTMLInputElement>(null)
   const quantityInputRef = useRef<HTMLInputElement>(null)
@@ -206,6 +228,100 @@ export default function Home() {
     } finally {
       setIsSavingToSheets(false)
     }
+  }
+
+  const fetchDatabaseRecords = async () => {
+    if (!selectedBranch) return
+    setIsLoadingDatabase(true)
+    try {
+      const response = await fetch(`/api/sheets?branch=${selectedBranch}&action=getData`)
+      const data = await response.json()
+      if (data.success) {
+        setDatabaseRecords(data.data)
+      } else {
+        toast.error(data.error || "Failed to fetch database records")
+      }
+    } catch (error) {
+      console.error("Error fetching database records:", error)
+      toast.error("Failed to fetch database records")
+    } finally {
+      setIsLoadingDatabase(false)
+    }
+  }
+
+  const startEditingDbRecord = (record: DatabaseRecord) => {
+    setEditingDbRecord(record.rowIndex)
+    setDbEditDate(record.date)
+    setDbEditCustomerName(record.customerName)
+    setDbEditMaterialName(record.materialName)
+    setDbEditQuantity(String(record.quantity))
+    setDbEditUnitPrice(String(record.unitPrice))
+  }
+
+  const cancelEditingDbRecord = () => {
+    setEditingDbRecord(null)
+    setDbEditDate("")
+    setDbEditCustomerName("")
+    setDbEditMaterialName("")
+    setDbEditQuantity("")
+    setDbEditUnitPrice("")
+  }
+
+  const saveDbRecord = async (rowIndex: number) => {
+    if (!selectedBranch) return
+    try {
+      const response = await fetch("/api/sheets", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          branch: selectedBranch,
+          rowIndex,
+          date: dbEditDate,
+          customerName: dbEditCustomerName,
+          materialName: dbEditMaterialName,
+          quantity: parseFloat(dbEditQuantity) || 0,
+          unitPrice: parseFloat(dbEditUnitPrice) || 0,
+        }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        toast.success("Record updated successfully")
+        cancelEditingDbRecord()
+        fetchDatabaseRecords()
+      } else {
+        toast.error(data.error || "Failed to update record")
+      }
+    } catch (error) {
+      console.error("Error updating record:", error)
+      toast.error("Failed to update record")
+    }
+  }
+
+  const deleteDbRecord = async (rowIndex: number) => {
+    if (!selectedBranch) return
+    if (!confirm("Are you sure you want to delete this record?")) return
+    try {
+      const response = await fetch(`/api/sheets?branch=${selectedBranch}&rowIndex=${rowIndex}`, {
+        method: "DELETE",
+      })
+      const data = await response.json()
+      if (data.success) {
+        toast.success("Record deleted successfully")
+        fetchDatabaseRecords()
+      } else {
+        toast.error(data.error || "Failed to delete record")
+      }
+    } catch (error) {
+      console.error("Error deleting record:", error)
+      toast.error("Failed to delete record")
+    }
+  }
+
+  const toggleDatabaseView = () => {
+    if (!showDatabaseView) {
+      fetchDatabaseRecords()
+    }
+    setShowDatabaseView(!showDatabaseView)
   }
 
   // Clear saved data
@@ -1314,7 +1430,13 @@ export default function Home() {
                     onClick={saveToGoogleSheets} 
                     disabled={isSavingToSheets || materials.length === 0}
                   >
-                    {isSavingToSheets ? "Saving..." : "Save to Google Sheets"}
+                    {isSavingToSheets ? "Saving..." : "Save to Database"}
+                  </Button>
+                  <Button 
+                    variant="secondary" 
+                    onClick={toggleDatabaseView}
+                  >
+                    {showDatabaseView ? "Hide Database" : "View Database"}
                   </Button>
                   <Button variant="outline" onClick={handleReset}>
                     Start Over
@@ -1327,6 +1449,124 @@ export default function Home() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Database Records View */}
+          {showDatabaseView && (
+            <Card className="mb-8 print:hidden">
+              <CardHeader>
+                <CardTitle className="flex justify-between items-center">
+                  <span>Database Records</span>
+                  <Button variant="outline" size="sm" onClick={fetchDatabaseRecords} disabled={isLoadingDatabase}>
+                    {isLoadingDatabase ? "Loading..." : "Refresh"}
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoadingDatabase ? (
+                  <p className="text-center py-4">Loading records...</p>
+                ) : databaseRecords.length === 0 ? (
+                  <p className="text-center py-4 text-muted-foreground">No records found in database</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-muted">
+                          <th className="border p-2 text-left">Report No</th>
+                          <th className="border p-2 text-left">Date</th>
+                          <th className="border p-2 text-left">Customer</th>
+                          <th className="border p-2 text-left">Material</th>
+                          <th className="border p-2 text-right">Qty</th>
+                          <th className="border p-2 text-right">Unit Price</th>
+                          <th className="border p-2 text-right">Total</th>
+                          <th className="border p-2 text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {databaseRecords.map((record) => (
+                          <tr key={record.rowIndex} className="hover:bg-muted/50">
+                            {editingDbRecord === record.rowIndex ? (
+                              <>
+                                <td className="border p-2">{record.reportNumber}</td>
+                                <td className="border p-2">
+                                  <Input
+                                    type="date"
+                                    value={dbEditDate}
+                                    onChange={(e) => setDbEditDate(e.target.value)}
+                                    className="w-full"
+                                  />
+                                </td>
+                                <td className="border p-2">
+                                  <Input
+                                    type="text"
+                                    value={dbEditCustomerName}
+                                    onChange={(e) => setDbEditCustomerName(e.target.value)}
+                                    className="w-full"
+                                  />
+                                </td>
+                                <td className="border p-2">
+                                  <Input
+                                    type="text"
+                                    value={dbEditMaterialName}
+                                    onChange={(e) => setDbEditMaterialName(e.target.value)}
+                                    className="w-full"
+                                  />
+                                </td>
+                                <td className="border p-2">
+                                  <Input
+                                    type="number"
+                                    value={dbEditQuantity}
+                                    onChange={(e) => setDbEditQuantity(e.target.value)}
+                                    className="w-full text-right"
+                                  />
+                                </td>
+                                <td className="border p-2">
+                                  <Input
+                                    type="number"
+                                    value={dbEditUnitPrice}
+                                    onChange={(e) => setDbEditUnitPrice(e.target.value)}
+                                    className="w-full text-right"
+                                  />
+                                </td>
+                                <td className="border p-2 text-right">
+                                  {((parseFloat(dbEditQuantity) || 0) * (parseFloat(dbEditUnitPrice) || 0)).toFixed(2)}
+                                </td>
+                                <td className="border p-2">
+                                  <div className="flex gap-1 justify-center">
+                                    <Button size="sm" onClick={() => saveDbRecord(record.rowIndex)}>Save</Button>
+                                    <Button size="sm" variant="outline" onClick={cancelEditingDbRecord}>Cancel</Button>
+                                  </div>
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="border p-2">{record.reportNumber}</td>
+                                <td className="border p-2">{record.date}</td>
+                                <td className="border p-2">{record.customerName}</td>
+                                <td className="border p-2">{record.materialName}</td>
+                                <td className="border p-2 text-right">{record.quantity.toFixed(2)}</td>
+                                <td className="border p-2 text-right">{record.unitPrice.toFixed(2)}</td>
+                                <td className="border p-2 text-right">{record.totalPrice.toFixed(2)}</td>
+                                <td className="border p-2">
+                                  <div className="flex gap-1 justify-center">
+                                    <Button size="sm" variant="outline" onClick={() => startEditingDbRecord(record)}>
+                                      <Pencil className="h-3 w-3" />
+                                    </Button>
+                                    <Button size="sm" variant="destructive" onClick={() => deleteDbRecord(record.rowIndex)}>
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Input Form */}
           <Card className="mb-8 print:hidden">
