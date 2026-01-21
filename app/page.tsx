@@ -1,7 +1,7 @@
 "use client"
 
-import type React from "react"
-import { useState, useRef, useEffect } from "react"
+import React, { useState, useRef, useEffect } from "react"
+import { toast } from "sonner"
 import { PlusCircle, FileDown, Printer, X, FileSpreadsheet, Package, Pencil, Check, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -147,7 +147,7 @@ export default function Home() {
   const handleCustomerSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!customerName.trim()) {
-      alert("Please enter a customer name")
+      toast.error("Please enter a customer name")
       return
     }
     setIsCustomerSet(true)
@@ -165,7 +165,7 @@ export default function Home() {
     }
 
     if (!name || !quantity || !unitPrice) {
-      alert("Please fill in all material fields")
+      toast.error("Please fill in all material fields")
       return
     }
 
@@ -214,7 +214,7 @@ export default function Home() {
   // Save edited material
   const saveEdit = () => {
     if (!editName || !editQuantity || !editUnitPrice) {
-      alert("Please fill in all fields")
+      toast.error("Please fill in all fields")
       return
     }
 
@@ -533,7 +533,7 @@ export default function Home() {
   // Export to PDF
   const exportToPDF = () => {
     if (materials.length === 0) {
-      alert("No data to export")
+      toast.warning("No data to export")
       return
     }
 
@@ -605,14 +605,14 @@ export default function Home() {
       doc.save(`${customerName}_Materials_Report_${new Date().toISOString().split("T")[0]}.pdf`)
     } catch (error) {
       console.error("Error exporting to PDF:", error)
-      alert("Failed to export to PDF. Please try again.")
+      toast.error("Failed to export to PDF. Please try again.")
     }
   }
 
   // Export stock report to PDF
   const exportStockToPDF = () => {
     if (materials.length === 0) {
-      alert("No data to export")
+      toast.warning("No data to export")
       return
     }
 
@@ -777,14 +777,14 @@ export default function Home() {
       doc.save(`Stock_Report_${customerName}_${new Date().toISOString().split("T")[0]}.pdf`)
     } catch (error) {
       console.error("Error exporting stock to PDF:", error)
-      alert("Failed to export stock to PDF. Please try again.")
+      toast.error("Failed to export stock to PDF. Please try again.")
     }
   }
 
   // Export to Excel
   const exportToExcel = async () => {
     if (materials.length === 0) {
-      alert("No data to export")
+      toast.warning("No data to export")
       return
     }
 
@@ -853,14 +853,14 @@ export default function Home() {
       URL.revokeObjectURL(url)
     } catch (error) {
       console.error("Error exporting to Excel:", error)
-      alert("Failed to export to Excel. Please try again.")
+      toast.error("Failed to export to Excel. Please try again.")
     }
   }
 
   // Export stock items to Excel
   const exportStockToExcel = async () => {
     if (materials.length === 0) {
-      alert("No data to export")
+      toast.warning("No data to export")
       return
     }
 
@@ -989,7 +989,7 @@ export default function Home() {
       URL.revokeObjectURL(url)
     } catch (error) {
       console.error("Error exporting stock to Excel:", error)
-      alert("Failed to export stock to Excel. Please try again.")
+      toast.error("Failed to export stock to Excel. Please try again.")
     }
   }
 
@@ -1264,7 +1264,7 @@ export default function Home() {
                         </thead>
                         <tbody>
                           {sortedDates.map((date, dateIndex) => (
-                            <>
+                            <React.Fragment key={date}>
                               {groupedMaterials[date].map((material, index) => (
                                 <tr key={material.id} className="border-b hover:bg-muted/50">
                                   {editingId === material.id ? (
@@ -1420,7 +1420,7 @@ export default function Home() {
                               <tr className="h-4 bg-muted/10">
                                 <td colSpan={6}></td>
                               </tr>
-                            </>
+                            </React.Fragment>
                           ))}
                         </tbody>
                         <tfoot className="border-t-2 border-muted">
