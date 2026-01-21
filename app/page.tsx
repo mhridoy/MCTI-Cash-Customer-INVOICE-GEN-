@@ -623,25 +623,28 @@ export default function Home() {
         unit: "mm",
       })
 
-      // Add company and customer information
-      doc.setFontSize(18)
-      doc.text(COMPANY_NAME, doc.internal.pageSize.getWidth() / 2, 15, { align: "center" })
-
-      doc.setFontSize(16)
-      doc.text("STOCK REPORT", doc.internal.pageSize.getWidth() / 2, 25, { align: "center" })
-
-      doc.setFontSize(12)
-      doc.text(`Customer: ${customerName}`, 14, 35)
-      doc.text(`Date: ${formatDate(new Date().toISOString().split("T")[0])}`, 14, 42)
-
       // Get material groups and grand totals
       const materialGroups = getMaterialGroups()
       const grandTotals = getStockGrandTotals()
 
+      // Add header function for each page
+      const addHeader = () => {
+        doc.setFontSize(18)
+        doc.text(COMPANY_NAME, doc.internal.pageSize.getWidth() / 2, 15, { align: "center" })
+        doc.setFontSize(16)
+        doc.text("STOCK REPORT", doc.internal.pageSize.getWidth() / 2, 25, { align: "center" })
+        doc.setFontSize(12)
+        doc.text(`Customer: ${customerName}`, 14, 35)
+        doc.text(`Date: ${formatDate(new Date().toISOString().split("T")[0])}`, 14, 42)
+      }
+
+      // Add header to first page
+      addHeader()
+
       // Start Y position for the first table
       let yPos = 50
 
-      // First, add the summary table
+      // First, add the summary table (without grand total - it will be at the end)
       doc.setFontSize(14)
       doc.text("SUMMARY", doc.internal.pageSize.getWidth() / 2, yPos, { align: "center" })
       yPos += 10
@@ -649,7 +652,7 @@ export default function Home() {
       // Define the columns for the summary table
       const summaryColumns = ["Material Name", "Total Quantity", "Average Price (SAR)", "Total Amount (SAR)"]
 
-      // Prepare the data for the summary table
+      // Prepare the data for the summary table (without grand total)
       const summaryData = materialGroups.map((group) => [
         group.name,
         group.totalQuantity.toFixed(2),
@@ -657,15 +660,7 @@ export default function Home() {
         `SAR ${group.totalAmount.toFixed(2)}`,
       ])
 
-      // Add grand total row
-      summaryData.push([
-        "GRAND TOTAL",
-        grandTotals.totalQuantity.toFixed(2),
-        "",
-        `SAR ${grandTotals.totalAmount.toFixed(2)}`,
-      ])
-
-      // Add summary table to the PDF
+      // Add summary table to the PDF (without grand total row)
       autoTable(doc, {
         head: [summaryColumns],
         body: summaryData,
@@ -682,11 +677,7 @@ export default function Home() {
           textColor: [0, 0, 0],
           fontStyle: "bold",
         },
-        footStyles: {
-          fillColor: [240, 240, 240],
-          textColor: [0, 0, 0],
-          fontStyle: "bold",
-        },
+        showFoot: "never",
       })
 
       // Get the Y position after the summary table
@@ -702,9 +693,10 @@ export default function Home() {
       yPos += 15
 
       // For each material group, create a table with detailed breakdown
-      materialGroups.forEach((group) => {
-        // Check if we need a new page
-        if (yPos > 230) {
+      materialGroups.forEach((group, groupIndex) => {
+        // Check if we need a new page (leave space for subtotal)
+        const estimatedTableHeight = (group.items.length + 2) * 10
+        if (yPos + estimatedTableHeight > 250) {
           doc.addPage()
           yPos = 20
         }
@@ -717,7 +709,7 @@ export default function Home() {
         // Define the columns for the table
         const columns = ["Date", "Quantity", "Unit Price (SAR)", "Total Price (SAR)"]
 
-        // Prepare the data for the table
+        // Prepare the data for the table (without subtotal - it goes in foot)
         const data = group.items.map((item) => [
           formatDate(item.date),
           item.quantity.toFixed(2),
@@ -725,18 +717,19 @@ export default function Home() {
           `SAR ${(item.quantity * item.unitPrice).toFixed(2)}`,
         ])
 
-        // Add a subtotal row
-        data.push([
+        // Subtotal row for the foot
+        const footData = [[
           "Subtotal",
           group.totalQuantity.toFixed(2),
-          `SAR ${group.averagePrice.toFixed(2)}`,
+          `Avg: SAR ${group.averagePrice.toFixed(2)}`,
           `SAR ${group.totalAmount.toFixed(2)}`,
-        ])
+        ]]
 
         // Add table to the PDF
         autoTable(doc, {
           head: [columns],
           body: data,
+          foot: footData,
           startY: yPos,
           theme: "grid",
           styles: {
@@ -755,21 +748,66 @@ export default function Home() {
             textColor: [0, 0, 0],
             fontStyle: "bold",
           },
+          showFoot: "lastPage",
         })
 
         // Update Y position for the next table
         yPos = doc.lastAutoTable.finalY + 15
       })
 
-      // Add page numbers
+      // Add GRAND TOTAL at the very end (only once)
+      // Check if we need a new page for grand total
+      if (yPos > 250) {
+        doc.addPage()
+        yPos = 20
+      }
+
+      // Add grand total section
+      doc.setFontSize(14)
+      doc.setFont("helvetica", "bold")
+      doc.text("GRAND TOTAL", doc.internal.pageSize.getWidth() / 2, yPos, { align: "center" })
+      yPos += 10
+
+      // Grand total table
+      autoTable(doc, {
+        head: [["Description", "Total Quantity", "", "Total Amount (SAR)"]],
+        body: [[
+          "All Materials",
+          grandTotals.totalQuantity.toFixed(2),
+          "",
+          `SAR ${grandTotals.totalAmount.toFixed(2)}`,
+        ]],
+        startY: yPos,
+        theme: "grid",
+        styles: {
+          cellPadding: 5,
+          fontSize: 12,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.2,
+          fontStyle: "bold",
+        },
+        headStyles: {
+          fillColor: [100, 100, 100],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+        },
+        bodyStyles: {
+          fillColor: [240, 240, 240],
+          fontStyle: "bold",
+        },
+      })
+
+      // Add page numbers to all pages
       const pageCount = doc.getNumberOfPages()
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i)
         doc.setFontSize(10)
+        doc.setFont("helvetica", "normal")
         doc.text(
           `Page ${i} of ${pageCount}`,
-          doc.internal.pageSize.getWidth() - 20,
+          doc.internal.pageSize.getWidth() / 2,
           doc.internal.pageSize.getHeight() - 10,
+          { align: "center" }
         )
       }
 
