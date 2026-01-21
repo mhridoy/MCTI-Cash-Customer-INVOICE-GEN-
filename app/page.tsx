@@ -1,0 +1,1552 @@
+"use client"
+
+import type React from "react"
+import { useState, useRef, useEffect } from "react"
+import { PlusCircle, FileDown, Printer, X, FileSpreadsheet, Package, Pencil, Check, Trash2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { formatDate } from "@/lib/utils"
+import { materialsList } from "@/lib/materials-list"
+import { cn } from "@/lib/utils"
+import { jsPDF } from "jspdf"
+import autoTable from "jspdf-autotable"
+
+// Define the Material type
+interface Material {
+  id: string
+  date: string
+  name: string
+  quantity: number
+  unitPrice: number
+}
+
+// Define the StockItem type for inventory export
+interface StockItem {
+  name: string
+  totalQuantity: number
+  averagePrice: number
+  totalAmount: number
+}
+
+// Define the MaterialGroup type for grouped stock report
+interface MaterialGroup {
+  name: string
+  items: Material[]
+  totalQuantity: number
+  totalAmount: number
+  averagePrice: number
+}
+
+// Define the SavedData type for localStorage
+interface SavedData {
+  customerName: string
+  materials: Material[]
+  lastUpdated: string
+}
+
+// Company information
+const COMPANY_NAME = "Tabib Al Arabia, Tasliya Branch"
+
+// LocalStorage key
+const STORAGE_KEY = "material_tracker_data"
+
+export default function Home() {
+  // Customer information state
+  const [customerName, setCustomerName] = useState("")
+  const [isCustomerSet, setIsCustomerSet] = useState(false)
+
+  // Material form state
+  const [currentDate, setCurrentDate] = useState("")
+  const [name, setName] = useState("")
+  const [quantity, setQuantity] = useState("")
+  const [unitPrice, setUnitPrice] = useState("")
+
+  // Autocomplete state
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [activeSuggestion, setActiveSuggestion] = useState(0)
+
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editQuantity, setEditQuantity] = useState("")
+  const [editUnitPrice, setEditUnitPrice] = useState("")
+  const [editDate, setEditDate] = useState("")
+
+  // View state
+  const [showStockReport, setShowStockReport] = useState(false)
+
+  // Input refs for focus management
+  const nameInputRef = useRef<HTMLInputElement>(null)
+  const quantityInputRef = useRef<HTMLInputElement>(null)
+  const unitPriceInputRef = useRef<HTMLInputElement>(null)
+  const addButtonRef = useRef<HTMLButtonElement>(null)
+  const suggestionsRef = useRef<HTMLDivElement>(null)
+  const editNameInputRef = useRef<HTMLInputElement>(null)
+  const stockReportRef = useRef<HTMLDivElement>(null)
+
+  // Materials list state
+  const [materials, setMaterials] = useState<Material[]>([])
+
+  // Reference for the content to be exported
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  // Load saved data from localStorage on initial load
+  useEffect(() => {
+    const savedDataString = localStorage.getItem(STORAGE_KEY)
+    if (savedDataString) {
+      try {
+        const savedData: SavedData = JSON.parse(savedDataString)
+        setCustomerName(savedData.customerName)
+        setMaterials(savedData.materials)
+        if (savedData.customerName) {
+          setIsCustomerSet(true)
+        }
+        console.log(`Loaded saved data from ${savedData.lastUpdated}`)
+      } catch (error) {
+        console.error("Error loading saved data:", error)
+      }
+    }
+
+    // Set today's date as default
+    const today = new Date().toISOString().split("T")[0]
+    setCurrentDate(today)
+  }, [])
+
+  // Save data to localStorage whenever materials or customer name changes
+  useEffect(() => {
+    if (materials.length > 0 || customerName) {
+      const dataToSave: SavedData = {
+        customerName,
+        materials,
+        lastUpdated: new Date().toISOString(),
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave))
+    }
+  }, [materials, customerName])
+
+  // Clear saved data
+  const clearSavedData = () => {
+    if (confirm("Are you sure you want to clear all saved data? This cannot be undone.")) {
+      localStorage.removeItem(STORAGE_KEY)
+      setCustomerName("")
+      setIsCustomerSet(false)
+      setMaterials([])
+      setCurrentDate(new Date().toISOString().split("T")[0])
+      setName("")
+      setQuantity("")
+      setUnitPrice("")
+      setSuggestions([])
+      setShowSuggestions(false)
+    }
+  }
+
+  // Handle customer form submission
+  const handleCustomerSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!customerName.trim()) {
+      alert("Please enter a customer name")
+      return
+    }
+    setIsCustomerSet(true)
+
+    // Focus the first input after setting customer
+    setTimeout(() => {
+      nameInputRef.current?.focus()
+    }, 100)
+  }
+
+  // Handle material form submission
+  const handleMaterialSubmit = (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault()
+    }
+
+    if (!name || !quantity || !unitPrice) {
+      alert("Please fill in all material fields")
+      return
+    }
+
+    // Use the provided date or the most recent date
+    const dateToUse = currentDate || getMostRecentDate() || new Date().toISOString().split("T")[0]
+
+    const newMaterial: Material = {
+      id: Date.now().toString(),
+      date: dateToUse,
+      name,
+      quantity: Number.parseFloat(quantity),
+      unitPrice: Number.parseFloat(unitPrice),
+    }
+
+    setMaterials([...materials, newMaterial])
+
+    // Reset form fields except date
+    setName("")
+    setQuantity("")
+    setUnitPrice("")
+    setSuggestions([])
+    setShowSuggestions(false)
+
+    // Focus back to the material name input for quick entry
+    setTimeout(() => {
+      nameInputRef.current?.focus()
+    }, 100)
+  }
+
+  // Start editing a material
+  const startEditing = (material: Material) => {
+    setEditingId(material.id)
+    setEditName(material.name)
+    setEditQuantity(material.quantity.toString())
+    setEditUnitPrice(material.unitPrice.toString())
+    setEditDate(material.date)
+
+    // Focus on the name input after rendering
+    setTimeout(() => {
+      if (editNameInputRef.current) {
+        editNameInputRef.current.focus()
+      }
+    }, 100)
+  }
+
+  // Save edited material
+  const saveEdit = () => {
+    if (!editName || !editQuantity || !editUnitPrice) {
+      alert("Please fill in all fields")
+      return
+    }
+
+    const updatedMaterials = materials.map((material) => {
+      if (material.id === editingId) {
+        return {
+          ...material,
+          date: editDate,
+          name: editName,
+          quantity: Number.parseFloat(editQuantity),
+          unitPrice: Number.parseFloat(editUnitPrice),
+        }
+      }
+      return material
+    })
+
+    setMaterials(updatedMaterials)
+    cancelEdit()
+  }
+
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditName("")
+    setEditQuantity("")
+    setEditUnitPrice("")
+    setEditDate("")
+  }
+
+  // Handle material name input change
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setName(value)
+
+    // Filter suggestions based on input
+    if (value.trim()) {
+      const filtered = materialsList.filter((material) => material.toLowerCase().includes(value.toLowerCase()))
+      setSuggestions(filtered)
+      setShowSuggestions(true)
+      setActiveSuggestion(0)
+    } else {
+      setSuggestions([])
+      setShowSuggestions(false)
+    }
+  }
+
+  // Handle edit name input change for suggestions
+  const handleEditNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setEditName(value)
+
+    // Filter suggestions based on input
+    if (value.trim()) {
+      const filtered = materialsList.filter((material) => material.toLowerCase().includes(value.toLowerCase()))
+      setSuggestions(filtered)
+      setShowSuggestions(true)
+      setActiveSuggestion(0)
+    } else {
+      setSuggestions([])
+      setShowSuggestions(false)
+    }
+  }
+
+  // Handle keyboard navigation in suggestions
+  const handleNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, isEdit = false) => {
+    // Tab to select current suggestion and move to next field
+    if (e.key === "Tab") {
+      if (showSuggestions && suggestions.length > 0) {
+        e.preventDefault()
+        if (isEdit) {
+          setEditName(suggestions[activeSuggestion])
+        } else {
+          setName(suggestions[activeSuggestion])
+        }
+        setShowSuggestions(false)
+        if (isEdit) {
+          const quantityInput = document.getElementById("edit-quantity")
+          if (quantityInput) {
+            ;(quantityInput as HTMLInputElement).focus()
+          }
+        } else {
+          quantityInputRef.current?.focus()
+        }
+      }
+      return
+    }
+
+    // Enter to select suggestion or move to next field
+    if (e.key === "Enter") {
+      e.preventDefault()
+
+      if (showSuggestions && suggestions.length > 0) {
+        if (isEdit) {
+          setEditName(suggestions[activeSuggestion])
+        } else {
+          setName(suggestions[activeSuggestion])
+        }
+        setShowSuggestions(false)
+        if (isEdit) {
+          const quantityInput = document.getElementById("edit-quantity")
+          if (quantityInput) {
+            ;(quantityInput as HTMLInputElement).focus()
+          }
+        } else {
+          quantityInputRef.current?.focus()
+        }
+      } else {
+        if (isEdit) {
+          const quantityInput = document.getElementById("edit-quantity")
+          if (quantityInput) {
+            ;(quantityInput as HTMLInputElement).focus()
+          }
+        } else {
+          quantityInputRef.current?.focus()
+        }
+      }
+      return
+    }
+
+    // Arrow down to navigate suggestions
+    if (e.key === "ArrowDown") {
+      if (showSuggestions && activeSuggestion < suggestions.length - 1) {
+        setActiveSuggestion(activeSuggestion + 1)
+      }
+      return
+    }
+
+    // Arrow up to navigate suggestions
+    if (e.key === "ArrowUp") {
+      if (showSuggestions && activeSuggestion > 0) {
+        setActiveSuggestion(activeSuggestion - 1)
+      }
+      return
+    }
+
+    // Escape to close suggestions
+    if (e.key === "Escape") {
+      setShowSuggestions(false)
+      return
+    }
+  }
+
+  // Handle suggestion click
+  const handleSuggestionClick = (suggestion: string, isEdit = false) => {
+    if (isEdit) {
+      setEditName(suggestion)
+      const quantityInput = document.getElementById("edit-quantity")
+      if (quantityInput) {
+        ;(quantityInput as HTMLInputElement).focus()
+      }
+    } else {
+      setName(suggestion)
+      quantityInputRef.current?.focus()
+    }
+    setShowSuggestions(false)
+  }
+
+  // Handle click outside suggestions
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(event.target as Node) &&
+        event.target !== nameInputRef.current &&
+        event.target !== editNameInputRef.current
+      ) {
+        setShowSuggestions(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [])
+
+  // Handle keyboard shortcuts for other fields
+  const handleKeyDown = (e: React.KeyboardEvent, field: string) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+
+      if (field === "quantity") {
+        unitPriceInputRef.current?.focus()
+      } else if (field === "unitPrice") {
+        // If all fields are filled, submit the form
+        if (name && quantity && unitPrice) {
+          handleMaterialSubmit()
+        }
+      }
+    }
+
+    // Excel-like behavior: Tab in the last field submits the form
+    if (e.key === "Tab" && field === "unitPrice") {
+      if (name && quantity && unitPrice) {
+        e.preventDefault()
+        handleMaterialSubmit()
+      }
+    }
+  }
+
+  // Handle keyboard shortcuts for edit fields
+  const handleEditKeyDown = (e: React.KeyboardEvent, field: string) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+
+      if (field === "quantity") {
+        const unitPriceInput = document.getElementById("edit-unitPrice")
+        if (unitPriceInput) {
+          ;(unitPriceInput as HTMLInputElement).focus()
+        }
+      } else if (field === "unitPrice") {
+        // If all fields are filled, save the edit
+        if (editName && editQuantity && editUnitPrice) {
+          saveEdit()
+        }
+      }
+    }
+
+    // Excel-like behavior: Tab in the last field saves the edit
+    if (e.key === "Tab" && field === "unitPrice") {
+      if (editName && editQuantity && editUnitPrice) {
+        e.preventDefault()
+        saveEdit()
+      }
+    }
+
+    // Escape to cancel edit
+    if (e.key === "Escape") {
+      cancelEdit()
+    }
+  }
+
+  // Get the most recent date from materials
+  const getMostRecentDate = (): string => {
+    if (materials.length === 0) return ""
+
+    return materials.reduce((latest, material) => {
+      return new Date(material.date) > new Date(latest) ? material.date : latest
+    }, materials[0].date)
+  }
+
+  // Group materials by date
+  const groupedMaterials = materials.reduce((groups: Record<string, Material[]>, material) => {
+    if (!groups[material.date]) {
+      groups[material.date] = []
+    }
+    groups[material.date].push(material)
+    return groups
+  }, {})
+
+  // Sort dates for display
+  const sortedDates = Object.keys(groupedMaterials).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+
+  // Calculate subtotals by date
+  const subtotalsByDate = sortedDates.map((date) => {
+    const subtotal = groupedMaterials[date].reduce(
+      (total, material) => total + material.quantity * material.unitPrice,
+      0,
+    )
+    return { date, subtotal }
+  })
+
+  // Calculate grand total
+  const grandTotal = materials.reduce((total, material) => total + material.quantity * material.unitPrice, 0)
+
+  // Calculate grand total quantity
+  const grandTotalQuantity = materials.reduce((total, material) => total + material.quantity, 0)
+
+  // Group materials by name for stock management
+  const getMaterialGroups = (): MaterialGroup[] => {
+    const groupMap = new Map<string, MaterialGroup>()
+
+    materials.forEach((material) => {
+      const itemTotal = material.quantity * material.unitPrice
+
+      if (groupMap.has(material.name)) {
+        const existingGroup = groupMap.get(material.name)!
+        existingGroup.items.push(material)
+        existingGroup.totalQuantity += material.quantity
+        existingGroup.totalAmount += itemTotal
+        // Recalculate average price
+        existingGroup.averagePrice = existingGroup.totalAmount / existingGroup.totalQuantity
+      } else {
+        groupMap.set(material.name, {
+          name: material.name,
+          items: [material],
+          totalQuantity: material.quantity,
+          totalAmount: itemTotal,
+          averagePrice: material.unitPrice,
+        })
+      }
+    })
+
+    return Array.from(groupMap.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  // Get stock items (simplified version of material groups)
+  const getStockItems = (): StockItem[] => {
+    const materialGroups = getMaterialGroups()
+    return materialGroups.map((group) => ({
+      name: group.name,
+      totalQuantity: group.totalQuantity,
+      averagePrice: group.averagePrice,
+      totalAmount: group.totalAmount,
+    }))
+  }
+
+  // Calculate grand totals for stock report
+  const getStockGrandTotals = () => {
+    const materialGroups = getMaterialGroups()
+    const totalQuantity = materialGroups.reduce((sum, group) => sum + group.totalQuantity, 0)
+    const totalAmount = materialGroups.reduce((sum, group) => sum + group.totalAmount, 0)
+    return { totalQuantity, totalAmount }
+  }
+
+  // Export to PDF
+  const exportToPDF = () => {
+    if (materials.length === 0) {
+      alert("No data to export")
+      return
+    }
+
+    try {
+      // Create new PDF document
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+      })
+
+      // Add company and customer information
+      doc.setFontSize(18)
+      doc.text(COMPANY_NAME, doc.internal.pageSize.getWidth() / 2, 15, { align: "center" })
+
+      doc.setFontSize(12)
+      doc.text(`Customer: ${customerName}`, 14, 25)
+      doc.text(`Date: ${formatDate(new Date().toISOString().split("T")[0])}`, 14, 32)
+
+      // Define the columns for the table
+      const columns = ["Date", "Material Name", "Quantity", "Unit Price (﷼)", "Total Price (﷼)"]
+
+      // Prepare the data for the table
+      const data = materials.map((material) => [
+        formatDate(material.date),
+        material.name,
+        material.quantity.toFixed(2),
+        material.unitPrice.toFixed(2),
+        (material.quantity * material.unitPrice).toFixed(2),
+      ])
+
+      // Add a grand total row
+      data.push(["", "GRAND TOTAL", grandTotalQuantity.toFixed(2), "", grandTotal.toFixed(2)])
+
+      // Add table to the PDF
+      autoTable(doc, {
+        head: [columns],
+        body: data,
+        margin: { top: 40 },
+        theme: "grid",
+        styles: {
+          cellPadding: 3,
+          fontSize: 10,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.1,
+        },
+        headStyles: {
+          fillColor: [220, 220, 220],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+        },
+        footStyles: {
+          fillColor: [240, 240, 240],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+        },
+        didDrawPage: (data) => {
+          // Footer
+          const str = "Page " + doc.getNumberOfPages()
+          doc.setFontSize(10)
+
+          // jsPDF 1.4+ uses getHeight, <1.4 uses .height
+          const pageSize = doc.internal.pageSize
+          const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight()
+          doc.text(str, data.settings.margin.left, pageHeight - 10)
+        },
+      })
+
+      // Save the PDF
+      doc.save(`${customerName}_Materials_Report_${new Date().toISOString().split("T")[0]}.pdf`)
+    } catch (error) {
+      console.error("Error exporting to PDF:", error)
+      alert("Failed to export to PDF. Please try again.")
+    }
+  }
+
+  // Export stock report to PDF
+  const exportStockToPDF = () => {
+    if (materials.length === 0) {
+      alert("No data to export")
+      return
+    }
+
+    try {
+      // Create PDF in portrait orientation
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+      })
+
+      // Add company and customer information
+      doc.setFontSize(18)
+      doc.text(COMPANY_NAME, doc.internal.pageSize.getWidth() / 2, 15, { align: "center" })
+
+      doc.setFontSize(16)
+      doc.text("STOCK REPORT", doc.internal.pageSize.getWidth() / 2, 25, { align: "center" })
+
+      doc.setFontSize(12)
+      doc.text(`Customer: ${customerName}`, 14, 35)
+      doc.text(`Date: ${formatDate(new Date().toISOString().split("T")[0])}`, 14, 42)
+
+      // Get material groups and grand totals
+      const materialGroups = getMaterialGroups()
+      const grandTotals = getStockGrandTotals()
+
+      // Start Y position for the first table
+      let yPos = 50
+
+      // First, add the summary table
+      doc.setFontSize(14)
+      doc.text("SUMMARY", doc.internal.pageSize.getWidth() / 2, yPos, { align: "center" })
+      yPos += 10
+
+      // Define the columns for the summary table
+      const summaryColumns = ["Material Name", "Total Quantity", "Average Price (SAR)", "Total Amount (SAR)"]
+
+      // Prepare the data for the summary table
+      const summaryData = materialGroups.map((group) => [
+        group.name,
+        group.totalQuantity.toFixed(2),
+        `SAR ${group.averagePrice.toFixed(2)}`,
+        `SAR ${group.totalAmount.toFixed(2)}`,
+      ])
+
+      // Add grand total row
+      summaryData.push([
+        "GRAND TOTAL",
+        grandTotals.totalQuantity.toFixed(2),
+        "",
+        `SAR ${grandTotals.totalAmount.toFixed(2)}`,
+      ])
+
+      // Add summary table to the PDF
+      autoTable(doc, {
+        head: [summaryColumns],
+        body: summaryData,
+        startY: yPos,
+        theme: "grid",
+        styles: {
+          cellPadding: 3,
+          fontSize: 10,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.1,
+        },
+        headStyles: {
+          fillColor: [220, 220, 220],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+        },
+        footStyles: {
+          fillColor: [240, 240, 240],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+        },
+      })
+
+      // Get the Y position after the summary table
+      yPos = doc.lastAutoTable.finalY + 15
+
+      // Add a page break after the summary
+      doc.addPage()
+      yPos = 20
+
+      // Add detailed breakdown header
+      doc.setFontSize(16)
+      doc.text("DETAILED BREAKDOWN", doc.internal.pageSize.getWidth() / 2, yPos, { align: "center" })
+      yPos += 15
+
+      // For each material group, create a table with detailed breakdown
+      materialGroups.forEach((group) => {
+        // Check if we need a new page
+        if (yPos > 230) {
+          doc.addPage()
+          yPos = 20
+        }
+
+        // Add material name as header
+        doc.setFontSize(14)
+        doc.text(group.name, doc.internal.pageSize.getWidth() / 2, yPos, { align: "center" })
+        yPos += 10
+
+        // Define the columns for the table
+        const columns = ["Date", "Quantity", "Unit Price (SAR)", "Total Price (SAR)"]
+
+        // Prepare the data for the table
+        const data = group.items.map((item) => [
+          formatDate(item.date),
+          item.quantity.toFixed(2),
+          `SAR ${item.unitPrice.toFixed(2)}`,
+          `SAR ${(item.quantity * item.unitPrice).toFixed(2)}`,
+        ])
+
+        // Add a subtotal row
+        data.push([
+          "Subtotal",
+          group.totalQuantity.toFixed(2),
+          `SAR ${group.averagePrice.toFixed(2)}`,
+          `SAR ${group.totalAmount.toFixed(2)}`,
+        ])
+
+        // Add table to the PDF
+        autoTable(doc, {
+          head: [columns],
+          body: data,
+          startY: yPos,
+          theme: "grid",
+          styles: {
+            cellPadding: 3,
+            fontSize: 10,
+            lineColor: [0, 0, 0],
+            lineWidth: 0.1,
+          },
+          headStyles: {
+            fillColor: [220, 220, 220],
+            textColor: [0, 0, 0],
+            fontStyle: "bold",
+          },
+          footStyles: {
+            fillColor: [240, 240, 240],
+            textColor: [0, 0, 0],
+            fontStyle: "bold",
+          },
+        })
+
+        // Update Y position for the next table
+        yPos = doc.lastAutoTable.finalY + 15
+      })
+
+      // Add page numbers
+      const pageCount = doc.getNumberOfPages()
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i)
+        doc.setFontSize(10)
+        doc.text(
+          `Page ${i} of ${pageCount}`,
+          doc.internal.pageSize.getWidth() - 20,
+          doc.internal.pageSize.getHeight() - 10,
+        )
+      }
+
+      // Save the PDF
+      doc.save(`Stock_Report_${customerName}_${new Date().toISOString().split("T")[0]}.pdf`)
+    } catch (error) {
+      console.error("Error exporting stock to PDF:", error)
+      alert("Failed to export stock to PDF. Please try again.")
+    }
+  }
+
+  // Export to Excel
+  const exportToExcel = async () => {
+    if (materials.length === 0) {
+      alert("No data to export")
+      return
+    }
+
+    try {
+      // Dynamically import xlsx
+      const xlsx = await import("xlsx")
+
+      // Create a workbook
+      const wb = xlsx.utils.book_new()
+
+      // Prepare data for Excel with header information
+      const excelData = [
+        ["Company:", COMPANY_NAME, "", "", ""],
+        ["Customer:", customerName, "", "", ""],
+        ["Date:", new Date().toLocaleDateString(), "", "", ""],
+        ["", "", "", "", ""], // Empty row for spacing
+        ["Date", "Material Name", "Quantity", "Unit Price (﷼)", "Total Price (﷼)"],
+      ]
+
+      // Add material rows
+      materials.forEach((material) => {
+        excelData.push([
+          formatDate(material.date),
+          material.name,
+          material.quantity,
+          material.unitPrice,
+          material.quantity * material.unitPrice,
+        ])
+      })
+
+      // Add a grand total row
+      excelData.push(["", "", "", "", ""])
+      excelData.push(["", "GRAND TOTAL", grandTotalQuantity, "", grandTotal])
+
+      // Create worksheet from the array of arrays
+      const ws = xlsx.utils.aoa_to_sheet(excelData)
+
+      // Add the materials sheet
+      xlsx.utils.book_append_sheet(wb, ws, "Materials Report")
+
+      // Generate Excel file as a binary string
+      const excelBinary = xlsx.write(wb, { bookType: "xlsx", type: "binary" })
+
+      // Convert binary string to ArrayBuffer
+      const buffer = new ArrayBuffer(excelBinary.length)
+      const view = new Uint8Array(buffer)
+      for (let i = 0; i < excelBinary.length; i++) {
+        view[i] = excelBinary.charCodeAt(i) & 0xff
+      }
+
+      // Create Blob from ArrayBuffer
+      const blob = new Blob([buffer], { type: "application/octet-stream" })
+
+      // Create download link
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${customerName}_Materials_Report_${new Date().toISOString().split("T")[0]}.xlsx`
+
+      // Append to document, trigger click, and remove
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      // Release the object URL
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error("Error exporting to Excel:", error)
+      alert("Failed to export to Excel. Please try again.")
+    }
+  }
+
+  // Export stock items to Excel
+  const exportStockToExcel = async () => {
+    if (materials.length === 0) {
+      alert("No data to export")
+      return
+    }
+
+    try {
+      // Dynamically import xlsx
+      const xlsx = await import("xlsx")
+
+      // Get material groups
+      const materialGroups = getMaterialGroups()
+      const grandTotals = getStockGrandTotals()
+
+      // Create a workbook
+      const wb = xlsx.utils.book_new()
+
+      // Prepare header data for Excel
+      const headerData = [
+        [`STOCK REPORT - ${COMPANY_NAME}`],
+        [`Customer: ${customerName}`],
+        [`Date: ${formatDate(new Date().toISOString().split("T")[0])}`],
+        [""],
+      ]
+
+      // Create worksheet
+      const ws = xlsx.utils.aoa_to_sheet(headerData)
+
+      // Current row index
+      let rowIndex = headerData.length
+
+      // First, add the summary section
+      xlsx.utils.sheet_add_aoa(ws, [["SUMMARY"]], { origin: { r: rowIndex, c: 0 } })
+      rowIndex += 1
+
+      // Add column headers for summary
+      xlsx.utils.sheet_add_aoa(ws, [["Material Name", "Total Quantity", "Average Price (﷼)", "Total Amount (﷼)"]], {
+        origin: { r: rowIndex, c: 0 },
+      })
+      rowIndex += 1
+
+      // Add each material group summary
+      materialGroups.forEach((group) => {
+        xlsx.utils.sheet_add_aoa(
+          ws,
+          [[group.name, group.totalQuantity, group.averagePrice.toFixed(2), group.totalAmount]],
+          { origin: { r: rowIndex, c: 0 } },
+        )
+        rowIndex += 1
+      })
+
+      // Add grand total row
+      xlsx.utils.sheet_add_aoa(ws, [["GRAND TOTAL", grandTotals.totalQuantity, "", grandTotals.totalAmount]], {
+        origin: { r: rowIndex, c: 0 },
+      })
+      rowIndex += 2
+
+      // Add detailed breakdown header
+      xlsx.utils.sheet_add_aoa(ws, [["DETAILED BREAKDOWN"]], { origin: { r: rowIndex, c: 0 } })
+      rowIndex += 2
+
+      // Add each material group with detailed breakdown
+      materialGroups.forEach((group) => {
+        // Add material name as header
+        xlsx.utils.sheet_add_aoa(ws, [[group.name]], { origin: { r: rowIndex, c: 0 } })
+        rowIndex += 1
+
+        // Add column headers for this section
+        xlsx.utils.sheet_add_aoa(ws, [["Date", "Quantity", "Unit Price (﷼)", "Total Price (﷼)"]], {
+          origin: { r: rowIndex, c: 0 },
+        })
+        rowIndex += 1
+
+        // Add each item in the group
+        group.items.forEach((item) => {
+          xlsx.utils.sheet_add_aoa(
+            ws,
+            [[formatDate(item.date), item.quantity, item.unitPrice, item.quantity * item.unitPrice]],
+            { origin: { r: rowIndex, c: 0 } },
+          )
+          rowIndex += 1
+        })
+
+        // Add group subtotal row
+        xlsx.utils.sheet_add_aoa(
+          ws,
+          [["Subtotal", group.totalQuantity, group.averagePrice.toFixed(2), group.totalAmount]],
+          { origin: { r: rowIndex, c: 0 } },
+        )
+        rowIndex += 2
+      })
+
+      // Set column widths
+      ws["!cols"] = [
+        { width: 20 }, // Material Name/Date
+        { width: 12 }, // Quantity
+        { width: 15 }, // Unit Price
+        { width: 15 }, // Total Price
+      ]
+
+      // Add the stock items sheet
+      xlsx.utils.book_append_sheet(wb, ws, "Stock Report")
+
+      // Generate Excel file as a binary string
+      const excelBinary = xlsx.write(wb, { bookType: "xlsx", type: "binary" })
+
+      // Convert binary string to ArrayBuffer
+      const buffer = new ArrayBuffer(excelBinary.length)
+      const view = new Uint8Array(buffer)
+      for (let i = 0; i < excelBinary.length; i++) {
+        view[i] = excelBinary.charCodeAt(i) & 0xff
+      }
+
+      // Create Blob from ArrayBuffer
+      const blob = new Blob([buffer], { type: "application/octet-stream" })
+
+      // Create download link
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `Stock_Report_${customerName}_${new Date().toISOString().split("T")[0]}.xlsx`
+
+      // Append to document, trigger click, and remove
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      // Release the object URL
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error("Error exporting stock to Excel:", error)
+      alert("Failed to export stock to Excel. Please try again.")
+    }
+  }
+
+  // Print function
+  const handlePrint = () => {
+    window.print()
+  }
+
+  // Print stock report
+  const handlePrintStock = () => {
+    setShowStockReport(true)
+    setTimeout(() => {
+      window.print()
+      setTimeout(() => {
+        setShowStockReport(false)
+      }, 500)
+    }, 500)
+  }
+
+  // Reset the entire form to start over
+  const handleReset = () => {
+    if (
+      confirm(
+        "Are you sure you want to start over? This will clear all data from the current session but keep the saved data.",
+      )
+    ) {
+      setCustomerName("")
+      setIsCustomerSet(false)
+      setMaterials([])
+      setCurrentDate(new Date().toISOString().split("T")[0])
+      setName("")
+      setQuantity("")
+      setUnitPrice("")
+      setSuggestions([])
+      setShowSuggestions(false)
+    }
+  }
+
+  return (
+    <main className="container mx-auto py-8 px-4">
+      <h1 className="text-3xl font-bold text-center mb-2 print:hidden">{COMPANY_NAME}</h1>
+      <h2 className="text-xl text-center mb-8 print:hidden">Material Tracking System</h2>
+
+      {!isCustomerSet ? (
+        // Customer Information Form
+        <Card className="mb-8 max-w-md mx-auto">
+          <CardHeader>
+            <CardTitle>Customer Information</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCustomerSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="customerName">Customer Name</Label>
+                <Input
+                  id="customerName"
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Enter customer name"
+                  className="text-lg"
+                  autoFocus
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full text-lg py-6">
+                Continue
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Customer Info Display */}
+          <Card className="mb-8 print:hidden">
+            <CardContent className="pt-6">
+              <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+                <div>
+                  <h2 className="text-xl font-bold">Customer: {customerName}</h2>
+                  <p className="text-muted-foreground">Date: {formatDate(new Date().toISOString().split("T")[0])}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={handleReset}>
+                    Start Over
+                  </Button>
+                  <Button variant="destructive" onClick={clearSavedData}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Clear Saved Data
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Input Form */}
+          <Card className="mb-8 print:hidden">
+            <CardHeader>
+              <CardTitle>Add New Material</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={(e) => handleMaterialSubmit(e)} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                  <div className="space-y-2 md:col-span-3">
+                    <Label htmlFor="date">Date (Optional)</Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      value={currentDate}
+                      onChange={(e) => setCurrentDate(e.target.value)}
+                      className="text-base"
+                    />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-4 relative">
+                    <Label htmlFor="name">Material Name</Label>
+                    <Input
+                      ref={nameInputRef}
+                      id="name"
+                      type="text"
+                      value={name}
+                      onChange={handleNameChange}
+                      onKeyDown={(e) => handleNameKeyDown(e)}
+                      onFocus={() => {
+                        if (name && suggestions.length > 0) {
+                          setShowSuggestions(true)
+                        }
+                      }}
+                      placeholder="Type material name..."
+                      className="text-base"
+                      autoComplete="off"
+                      required
+                    />
+                    {showSuggestions && suggestions.length > 0 && (
+                      <div
+                        ref={suggestionsRef}
+                        className="absolute z-10 w-full bg-background border rounded-md shadow-lg mt-1 max-h-60 overflow-y-auto"
+                      >
+                        {suggestions.map((suggestion, index) => (
+                          <div
+                            key={suggestion}
+                            className={cn(
+                              "px-3 py-2 cursor-pointer hover:bg-muted",
+                              index === activeSuggestion && "bg-muted",
+                            )}
+                            onClick={() => handleSuggestionClick(suggestion)}
+                          >
+                            {suggestion}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="quantity">Quantity</Label>
+                    <Input
+                      ref={quantityInputRef}
+                      id="quantity"
+                      type="number"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, "quantity")}
+                      placeholder="Quantity"
+                      min="0.01"
+                      step="0.01"
+                      className="text-base"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="unitPrice">Unit Price (﷼)</Label>
+                    <Input
+                      ref={unitPriceInputRef}
+                      id="unitPrice"
+                      type="number"
+                      value={unitPrice}
+                      onChange={(e) => setUnitPrice(e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, "unitPrice")}
+                      placeholder="Unit price"
+                      min="0.01"
+                      step="0.01"
+                      className="text-base"
+                      required
+                    />
+                  </div>
+
+                  <div className="md:col-span-1">
+                    <Button ref={addButtonRef} type="submit" className="w-full h-10">
+                      <PlusCircle className="h-5 w-5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="text-sm text-muted-foreground">
+                  <p>💡 Pro tips:</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>
+                      Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Tab</kbd> to auto-complete suggestion
+                      and move to next field
+                    </li>
+                    <li>
+                      Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Tab</kbd> in the Unit Price field to
+                      add the item and start a new row
+                    </li>
+                    <li>Use arrow keys to navigate suggestions</li>
+                  </ul>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Export Buttons */}
+          <div className="flex flex-wrap justify-end gap-2 mb-4 print:hidden">
+            <Button variant="outline" onClick={handlePrint} disabled={materials.length === 0}>
+              <Printer className="mr-2 h-4 w-4" />
+              Print Materials
+            </Button>
+            <Button variant="outline" onClick={handlePrintStock} disabled={materials.length === 0}>
+              <Printer className="mr-2 h-4 w-4" />
+              Print Stock Report
+            </Button>
+            <Button variant="outline" onClick={exportToPDF} disabled={materials.length === 0}>
+              <FileDown className="mr-2 h-4 w-4" />
+              Export to PDF
+            </Button>
+            <Button variant="outline" onClick={exportStockToPDF} disabled={materials.length === 0}>
+              <FileDown className="mr-2 h-4 w-4" />
+              Export Stock to PDF
+            </Button>
+            <Button variant="outline" onClick={exportToExcel} disabled={materials.length === 0}>
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
+            </Button>
+            <Button variant="outline" onClick={exportStockToExcel} disabled={materials.length === 0}>
+              <Package className="mr-2 h-4 w-4" />
+              Export Stock to Excel
+            </Button>
+          </div>
+
+          {/* Printable Content - Materials Report */}
+          {!showStockReport ? (
+            <div ref={contentRef} className="print:block">
+              {/* Report Header for Print/PDF */}
+              <div className="print:block hidden mb-8">
+                <h1 className="text-3xl font-bold text-center">{COMPANY_NAME}</h1>
+                <p className="text-center text-muted-foreground">
+                  Generated on: {formatDate(new Date().toISOString().split("T")[0])}
+                </p>
+                <p className="text-center font-medium mt-2">Customer: {customerName}</p>
+              </div>
+
+              {/* Materials Table */}
+              <Card className="mb-8">
+                <CardHeader className="print:py-2">
+                  <CardTitle>Materials List</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {materials.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">No materials added yet</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="bg-muted border-b">
+                            <th className="p-2 text-left">Date</th>
+                            <th className="p-2 text-left">Material Name</th>
+                            <th className="p-2 text-right">Quantity</th>
+                            <th className="p-2 text-right">Unit Price (﷼)</th>
+                            <th className="p-2 text-right">Total Price (﷼)</th>
+                            <th className="p-2 text-right print:hidden">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedDates.map((date, dateIndex) => (
+                            <>
+                              {groupedMaterials[date].map((material, index) => (
+                                <tr key={material.id} className="border-b hover:bg-muted/50">
+                                  {editingId === material.id ? (
+                                    <>
+                                      <td className="p-2">
+                                        <Input
+                                          id="edit-date"
+                                          type="date"
+                                          value={editDate}
+                                          onChange={(e) => setEditDate(e.target.value)}
+                                          className="text-sm"
+                                          required
+                                        />
+                                      </td>
+                                      <td className="p-2">
+                                        <div className="relative">
+                                          <Input
+                                            ref={editNameInputRef}
+                                            id="edit-name"
+                                            type="text"
+                                            value={editName}
+                                            onChange={handleEditNameChange}
+                                            onKeyDown={(e) => handleNameKeyDown(e, true)}
+                                            onFocus={() => {
+                                              if (editName && suggestions.length > 0) {
+                                                setShowSuggestions(true)
+                                              }
+                                            }}
+                                            className="text-sm"
+                                            autoComplete="off"
+                                            required
+                                          />
+                                          {showSuggestions && suggestions.length > 0 && (
+                                            <div
+                                              ref={suggestionsRef}
+                                              className="absolute z-10 w-full bg-background border rounded-md shadow-lg mt-1 max-h-60 overflow-y-auto"
+                                            >
+                                              {suggestions.map((suggestion, index) => (
+                                                <div
+                                                  key={suggestion}
+                                                  className={cn(
+                                                    "px-3 py-2 cursor-pointer hover:bg-muted",
+                                                    index === activeSuggestion && "bg-muted",
+                                                  )}
+                                                  onClick={() => handleSuggestionClick(suggestion, true)}
+                                                >
+                                                  {suggestion}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td>
+                                      <td className="p-2">
+                                        <Input
+                                          id="edit-quantity"
+                                          type="number"
+                                          value={editQuantity}
+                                          onChange={(e) => setEditQuantity(e.target.value)}
+                                          onKeyDown={(e) => handleEditKeyDown(e, "quantity")}
+                                          className="text-sm text-right"
+                                          min="0.01"
+                                          step="0.01"
+                                          required
+                                        />
+                                      </td>
+                                      <td className="p-2">
+                                        <Input
+                                          id="edit-unitPrice"
+                                          type="number"
+                                          value={editUnitPrice}
+                                          onChange={(e) => setEditUnitPrice(e.target.value)}
+                                          onKeyDown={(e) => handleEditKeyDown(e, "unitPrice")}
+                                          className="text-sm text-right"
+                                          min="0.01"
+                                          step="0.01"
+                                          required
+                                        />
+                                      </td>
+                                      <td className="p-2 text-right">
+                                        {(Number(editQuantity) * Number(editUnitPrice)).toFixed(2)}
+                                      </td>
+                                      <td className="p-2 text-right print:hidden">
+                                        <div className="flex justify-end gap-1">
+                                          <Button variant="ghost" size="sm" onClick={saveEdit} className="h-8 w-8 p-0">
+                                            <span className="sr-only">Save</span>
+                                            <Check className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={cancelEdit}
+                                            className="h-8 w-8 p-0"
+                                          >
+                                            <span className="sr-only">Cancel</span>
+                                            <X className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </td>
+                                    </>
+                                  ) : (
+                                    <>
+                                      {index === 0 ? (
+                                        <td className="p-2 font-medium">{formatDate(material.date)}</td>
+                                      ) : (
+                                        <td className="p-2 font-medium">{formatDate(material.date)}</td>
+                                      )}
+                                      <td className="p-2">{material.name}</td>
+                                      <td className="p-2 text-right">{material.quantity.toFixed(2)}</td>
+                                      <td className="p-2 text-right">{material.unitPrice.toFixed(2)}</td>
+                                      <td className="p-2 text-right">
+                                        {(material.quantity * material.unitPrice).toFixed(2)}
+                                      </td>
+                                      <td className="p-2 text-right print:hidden">
+                                        <div className="flex justify-end gap-1">
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => startEditing(material)}
+                                            className="h-8 w-8 p-0"
+                                          >
+                                            <span className="sr-only">Edit</span>
+                                            <Pencil className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                              setMaterials(materials.filter((m) => m.id !== material.id))
+                                            }}
+                                            className="h-8 w-8 p-0"
+                                          >
+                                            <span className="sr-only">Delete</span>
+                                            <X className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </td>
+                                    </>
+                                  )}
+                                </tr>
+                              ))}
+                              {/* Subtotal for date group */}
+                              <tr className="bg-muted/30">
+                                <td colSpan={4} className="p-2 text-right font-medium">
+                                  Subtotal for {formatDate(date)}:
+                                </td>
+                                <td className="p-2 text-right font-medium">
+                                  ﷼ {subtotalsByDate[dateIndex].subtotal.toFixed(2)}
+                                </td>
+                                <td className="print:hidden"></td>
+                              </tr>
+                              {/* Gap after each date group */}
+                              <tr className="h-4 bg-muted/10">
+                                <td colSpan={6}></td>
+                              </tr>
+                            </>
+                          ))}
+                        </tbody>
+                        <tfoot className="border-t-2 border-muted">
+                          <tr>
+                            <td colSpan={2} className="p-2 text-right font-bold">
+                              Grand Total:
+                            </td>
+                            <td className="p-2 text-right font-bold">{grandTotalQuantity.toFixed(2)}</td>
+                            <td className="p-2 text-right font-bold"></td>
+                            <td className="p-2 text-right font-bold">﷼ {grandTotal.toFixed(2)}</td>
+                            <td className="print:hidden"></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            // Stock Report View for Printing
+            <div ref={stockReportRef} className="print:block">
+              {/* Report Header for Print */}
+              <div className="mb-8">
+                <h1 className="text-3xl font-bold text-center">{COMPANY_NAME}</h1>
+                <h2 className="text-xl text-center">Stock Report</h2>
+                <p className="text-center text-muted-foreground">
+                  Generated on: {formatDate(new Date().toISOString().split("T")[0])}
+                </p>
+                <p className="text-center font-medium mt-2">Customer: {customerName}</p>
+              </div>
+
+              {/* Stock Summary Table */}
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle>Summary</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {materials.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">No materials added yet</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse stock-report-table">
+                        <thead>
+                          <tr>
+                            <th>Material Name</th>
+                            <th>Total Quantity</th>
+                            <th>Average Price (﷼)</th>
+                            <th>Total Amount (﷼)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {getMaterialGroups().map((group) => (
+                            <tr key={group.name}>
+                              <td>{group.name}</td>
+                              <td className="text-right">{group.totalQuantity.toFixed(2)}</td>
+                              <td className="text-right">{group.averagePrice.toFixed(2)}</td>
+                              <td className="text-right">{group.totalAmount.toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="grand-total">
+                            <td>Grand Total</td>
+                            <td className="text-right">{getStockGrandTotals().totalQuantity.toFixed(2)}</td>
+                            <td></td>
+                            <td className="text-right">{getStockGrandTotals().totalAmount.toFixed(2)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Detailed Breakdown */}
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle>Detailed Breakdown</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {materials.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">No materials added yet</p>
+                  ) : (
+                    <div>
+                      {getMaterialGroups().map((group) => (
+                        <div key={group.name} className="mb-8">
+                          <h3 className="text-lg font-bold mb-2">{group.name}</h3>
+                          <table className="w-full border-collapse stock-report-table">
+                            <thead>
+                              <tr>
+                                <th>Date</th>
+                                <th>Quantity</th>
+                                <th>Unit Price (﷼)</th>
+                                <th>Total Price (﷼)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {group.items.map((item) => (
+                                <tr key={item.id}>
+                                  <td>{formatDate(item.date)}</td>
+                                  <td className="text-right">{item.quantity.toFixed(2)}</td>
+                                  <td className="text-right">{item.unitPrice.toFixed(2)}</td>
+                                  <td className="text-right">{(item.quantity * item.unitPrice).toFixed(2)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr className="group-total">
+                                <td>Subtotal</td>
+                                <td className="text-right">{group.totalQuantity.toFixed(2)}</td>
+                                <td className="text-right">{group.averagePrice.toFixed(2)}</td>
+                                <td className="text-right">{group.totalAmount.toFixed(2)}</td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </>
+      )}
+    </main>
+  )
+}
