@@ -609,7 +609,7 @@ export default function Home() {
     }
   }
 
-  // Export stock report to PDF - Professional compact layout
+  // Export stock report to PDF - Professional full-width layout
   const exportStockToPDF = () => {
     if (materials.length === 0) {
       toast.warning("No data to export")
@@ -617,7 +617,7 @@ export default function Home() {
     }
 
     try {
-      // Create PDF in portrait orientation with compact margins
+      // Create PDF in portrait orientation with minimal margins for full-width layout
       const doc = new jsPDF({
         orientation: "portrait",
         unit: "mm",
@@ -628,34 +628,34 @@ export default function Home() {
       const grandTotals = getStockGrandTotals()
       const pageHeight = doc.internal.pageSize.getHeight()
       const pageWidth = doc.internal.pageSize.getWidth()
-      const margin = 10
-      const usableHeight = pageHeight - 20 // Leave space for page numbers
+      const margin = 5 // Minimal margin for full-width tables
+      const tableWidth = pageWidth - (margin * 2)
+      const usableHeight = pageHeight - 12 // Leave space for page numbers
+      const colWidth = tableWidth / 2 - 2 // Width for two-column layout
 
-      // Compact header function
-      const addHeader = (isFirstPage: boolean) => {
-        if (isFirstPage) {
-          doc.setFontSize(14)
-          doc.text(COMPANY_NAME, pageWidth / 2, 10, { align: "center" })
-          doc.setFontSize(11)
-          doc.text("STOCK REPORT", pageWidth / 2, 16, { align: "center" })
-          doc.setFontSize(9)
-          doc.text(`Customer: ${customerName}  |  Date: ${formatDate(new Date().toISOString().split("T")[0])}`, pageWidth / 2, 22, { align: "center" })
-        }
-      }
-
-      // Add header to first page
-      addHeader(true)
-
-      // Start Y position - compact
-      let yPos = 28
-
-      // Summary table with compact styling
-      doc.setFontSize(10)
+      // Compact header
+      doc.setFontSize(12)
       doc.setFont("helvetica", "bold")
-      doc.text("SUMMARY", margin, yPos)
-      yPos += 5
+      doc.text(COMPANY_NAME, pageWidth / 2, 8, { align: "center" })
+      doc.setFontSize(10)
+      doc.text("STOCK REPORT", pageWidth / 2, 13, { align: "center" })
+      doc.setFontSize(8)
+      doc.setFont("helvetica", "normal")
+      doc.text(`Customer: ${customerName}  |  Date: ${formatDate(new Date().toISOString().split("T")[0])}`, pageWidth / 2, 18, { align: "center" })
 
-      const summaryColumns = ["Material", "Qty", "Avg Price (SAR)", "Total (SAR)"]
+      let yPos = 22
+
+      // Summary table - full width
+      doc.setFontSize(9)
+      doc.setFont("helvetica", "bold")
+      doc.setFillColor(50, 50, 50)
+      doc.rect(margin, yPos, tableWidth, 5, "F")
+      doc.setTextColor(255, 255, 255)
+      doc.text("SUMMARY", pageWidth / 2, yPos + 3.5, { align: "center" })
+      doc.setTextColor(0, 0, 0)
+      yPos += 6
+
+      const summaryColumns = ["Material Name", "Qty", "Avg Price (SAR)", "Total (SAR)"]
       const summaryData = materialGroups.map((group) => [
         group.name,
         group.totalQuantity.toFixed(2),
@@ -663,7 +663,7 @@ export default function Home() {
         group.totalAmount.toFixed(2),
       ])
 
-      // Add summary table - compact
+      // Full-width summary table
       autoTable(doc, {
         head: [summaryColumns],
         body: summaryData,
@@ -671,52 +671,89 @@ export default function Home() {
         theme: "grid",
         styles: {
           cellPadding: 1.5,
-          fontSize: 8,
+          fontSize: 7,
           lineColor: [0, 0, 0],
-          lineWidth: 0.1,
+          lineWidth: 0.15,
         },
         headStyles: {
-          fillColor: [200, 200, 200],
+          fillColor: [180, 180, 180],
           textColor: [0, 0, 0],
           fontStyle: "bold",
           cellPadding: 2,
         },
         columnStyles: {
-          0: { cellWidth: 60 },
-          1: { cellWidth: 25, halign: "right" },
-          2: { cellWidth: 35, halign: "right" },
-          3: { cellWidth: 35, halign: "right" },
+          0: { cellWidth: tableWidth * 0.4 },
+          1: { cellWidth: tableWidth * 0.15, halign: "right" },
+          2: { cellWidth: tableWidth * 0.22, halign: "right" },
+          3: { cellWidth: tableWidth * 0.23, halign: "right" },
         },
         margin: { left: margin, right: margin },
+        tableWidth: tableWidth,
       })
 
-      yPos = doc.lastAutoTable.finalY + 8
+      yPos = doc.lastAutoTable.finalY + 4
 
       // Detailed breakdown header
-      doc.setFontSize(10)
-      doc.setFont("helvetica", "bold")
-      doc.text("DETAILED BREAKDOWN", margin, yPos)
-      yPos += 5
+      doc.setFillColor(50, 50, 50)
+      doc.rect(margin, yPos, tableWidth, 5, "F")
+      doc.setTextColor(255, 255, 255)
+      doc.text("DETAILED BREAKDOWN", pageWidth / 2, yPos + 3.5, { align: "center" })
+      doc.setTextColor(0, 0, 0)
+      yPos += 7
 
-      // For each material group, create a compact table
+      // Two-column layout for detailed breakdown
+      let leftY = yPos
+      let rightY = yPos
+      let useLeftColumn = true
+
       materialGroups.forEach((group, groupIndex) => {
-        // Calculate estimated height for this group (header + rows + subtotal)
-        const rowHeight = 5 // Approximate row height in mm
-        const estimatedTableHeight = (group.items.length + 3) * rowHeight
+        const rowHeight = 4
+        const estimatedTableHeight = (group.items.length + 3) * rowHeight + 6
 
-        // Check if we need a new page - ensure entire group fits
-        if (yPos + estimatedTableHeight > usableHeight) {
-          doc.addPage()
-          yPos = 12
+        // Determine which column to use
+        const currentY = useLeftColumn ? leftY : rightY
+        const xOffset = useLeftColumn ? margin : margin + colWidth + 4
+
+        // Check if we need a new page
+        if (currentY + estimatedTableHeight > usableHeight) {
+          if (useLeftColumn) {
+            // Try right column first
+            if (rightY + estimatedTableHeight <= usableHeight) {
+              useLeftColumn = false
+            } else {
+              // Both columns full, new page
+              doc.addPage()
+              leftY = 10
+              rightY = 10
+              useLeftColumn = true
+            }
+          } else {
+            // Right column full, check left
+            if (leftY + estimatedTableHeight <= usableHeight) {
+              useLeftColumn = true
+            } else {
+              // Both columns full, new page
+              doc.addPage()
+              leftY = 10
+              rightY = 10
+              useLeftColumn = true
+            }
+          }
         }
 
-        // Material name - compact
-        doc.setFontSize(9)
-        doc.setFont("helvetica", "bold")
-        doc.text(group.name, margin, yPos)
-        yPos += 4
+        const startY = useLeftColumn ? leftY : rightY
+        const startX = useLeftColumn ? margin : margin + colWidth + 4
 
-        const columns = ["Date", "Qty", "Unit Price", "Total"]
+        // Material name header
+        doc.setFontSize(7)
+        doc.setFont("helvetica", "bold")
+        doc.setFillColor(100, 100, 100)
+        doc.rect(startX, startY, colWidth, 4, "F")
+        doc.setTextColor(255, 255, 255)
+        doc.text(group.name, startX + 2, startY + 2.8)
+        doc.setTextColor(0, 0, 0)
+
+        const columns = ["Date", "Qty", "Price", "Total"]
         const data = group.items.map((item) => [
           formatDate(item.date),
           item.quantity.toFixed(2),
@@ -727,58 +764,70 @@ export default function Home() {
         const footData = [[
           "Subtotal",
           group.totalQuantity.toFixed(2),
-          `Avg: ${group.averagePrice.toFixed(2)}`,
+          group.averagePrice.toFixed(2),
           group.totalAmount.toFixed(2),
         ]]
 
-        // Add compact table
         autoTable(doc, {
           head: [columns],
           body: data,
           foot: footData,
-          startY: yPos,
+          startY: startY + 4,
           theme: "grid",
           styles: {
-            cellPadding: 1.2,
-            fontSize: 7,
+            cellPadding: 1,
+            fontSize: 6,
             lineColor: [0, 0, 0],
             lineWidth: 0.1,
           },
           headStyles: {
-            fillColor: [220, 220, 220],
+            fillColor: [200, 200, 200],
             textColor: [0, 0, 0],
             fontStyle: "bold",
-            cellPadding: 1.5,
+            cellPadding: 1.2,
           },
           footStyles: {
-            fillColor: [235, 235, 235],
+            fillColor: [220, 220, 220],
             textColor: [0, 0, 0],
             fontStyle: "bold",
           },
           columnStyles: {
-            0: { cellWidth: 35 },
-            1: { cellWidth: 25, halign: "right" },
-            2: { cellWidth: 30, halign: "right" },
-            3: { cellWidth: 30, halign: "right" },
+            0: { cellWidth: colWidth * 0.3 },
+            1: { cellWidth: colWidth * 0.2, halign: "right" },
+            2: { cellWidth: colWidth * 0.25, halign: "right" },
+            3: { cellWidth: colWidth * 0.25, halign: "right" },
           },
-          margin: { left: margin, right: margin },
+          margin: { left: startX, right: pageWidth - startX - colWidth },
+          tableWidth: colWidth,
           showFoot: "lastPage",
-          pageBreak: "avoid",
         })
 
-        yPos = doc.lastAutoTable.finalY + 6
+        const finalY = doc.lastAutoTable.finalY + 3
+
+        if (useLeftColumn) {
+          leftY = finalY
+          useLeftColumn = false
+        } else {
+          rightY = finalY
+          useLeftColumn = true
+        }
       })
 
-      // Grand total at the end - compact but prominent
-      if (yPos + 20 > usableHeight) {
+      // Grand total at the end - full width
+      yPos = Math.max(leftY, rightY) + 3
+      if (yPos + 15 > usableHeight) {
         doc.addPage()
-        yPos = 12
+        yPos = 10
       }
 
-      doc.setFontSize(10)
+      doc.setFillColor(50, 50, 50)
+      doc.rect(margin, yPos, tableWidth, 5, "F")
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(9)
       doc.setFont("helvetica", "bold")
-      doc.text("GRAND TOTAL", margin, yPos)
-      yPos += 4
+      doc.text("GRAND TOTAL", pageWidth / 2, yPos + 3.5, { align: "center" })
+      doc.setTextColor(0, 0, 0)
+      yPos += 6
 
       autoTable(doc, {
         head: [["Description", "Total Quantity", "Total Amount (SAR)"]],
@@ -791,9 +840,9 @@ export default function Home() {
         theme: "grid",
         styles: {
           cellPadding: 2,
-          fontSize: 9,
+          fontSize: 8,
           lineColor: [0, 0, 0],
-          lineWidth: 0.15,
+          lineWidth: 0.2,
           fontStyle: "bold",
         },
         headStyles: {
@@ -802,27 +851,28 @@ export default function Home() {
           fontStyle: "bold",
         },
         bodyStyles: {
-          fillColor: [230, 230, 230],
+          fillColor: [220, 220, 220],
           fontStyle: "bold",
         },
         columnStyles: {
-          0: { cellWidth: 60 },
-          1: { cellWidth: 40, halign: "right" },
-          2: { cellWidth: 50, halign: "right" },
+          0: { cellWidth: tableWidth * 0.4 },
+          1: { cellWidth: tableWidth * 0.3, halign: "right" },
+          2: { cellWidth: tableWidth * 0.3, halign: "right" },
         },
         margin: { left: margin, right: margin },
+        tableWidth: tableWidth,
       })
 
-      // Add page numbers - compact
+      // Add page numbers
       const pageCount = doc.getNumberOfPages()
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i)
-        doc.setFontSize(8)
+        doc.setFontSize(7)
         doc.setFont("helvetica", "normal")
         doc.text(
           `Page ${i} of ${pageCount}`,
           pageWidth / 2,
-          pageHeight - 5,
+          pageHeight - 3,
           { align: "center" }
         )
       }
@@ -1558,9 +1608,9 @@ export default function Home() {
                   {materials.length === 0 ? (
                     <p className="text-center text-muted-foreground py-4">No materials added yet</p>
                   ) : (
-                    <div>
+                    <div className="detailed-breakdown-grid">
                       {getMaterialGroups().map((group) => (
-                        <div key={group.name} className="mb-4 material-group">
+                        <div key={group.name} className="material-group">
                           <h3 className="text-lg font-bold mb-1">{group.name}</h3>
                           <table className="w-full border-collapse stock-report-table">
                             <thead>
