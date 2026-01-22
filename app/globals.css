@@ -256,6 +256,74 @@
   .overflow-x-auto {
     overflow: visible !important;
   }
+
+  /* Professional materials list table for print */
+  .print\\:block table thead tr {
+    background: #003366 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print\\:block table thead th {
+    color: white !important;
+    font-weight: bold !important;
+    padding: 6px 8px !important;
+    font-size: 9px !important;
+    border: 1px solid #003366 !important;
+  }
+
+  .print\\:block table tbody tr:nth-child(odd) {
+    background-color: #ffffff !important;
+  }
+
+  .print\\:block table tbody tr:nth-child(even) {
+    background-color: #f5f7fa !important;
+  }
+
+  .print\\:block table tbody td {
+    padding: 5px 8px !important;
+    font-size: 9px !important;
+    border: 1px solid #ddd !important;
+  }
+
+  /* Subtotal row styling for materials list */
+  .print\\:block table tbody tr[class*="from-blue"] {
+    background: linear-gradient(to right, #e6f0ff, #cce0ff) !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print\\:block table tbody tr[class*="from-blue"] td {
+    color: #003366 !important;
+    font-weight: bold !important;
+    border-top: 2px solid #003366 !important;
+  }
+
+  /* Grand total row styling for materials list */
+  .print\\:block table tfoot tr {
+    background: #003366 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print\\:block table tfoot td {
+    color: white !important;
+    font-weight: bold !important;
+    padding: 8px !important;
+    font-size: 10px !important;
+    border: 1px solid #003366 !important;
+  }
+
+  /* Gap rows between date groups */
+  .print\\:block table tbody tr[class*="h-2"] {
+    height: 4px !important;
+    background-color: #e0e0e0 !important;
+  }
+
+  .print\\:block table tbody tr[class*="h-2"] td {
+    padding: 0 !important;
+    border: none !important;
+  }
 }
 
 /* Stock report specific styles - improved for better display */

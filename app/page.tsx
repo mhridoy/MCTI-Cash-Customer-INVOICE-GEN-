@@ -465,6 +465,32 @@ export default function Home() {
     setEditDate("")
   }
 
+  // Insert a new item after a specific material
+  const insertAfter = (materialId: string) => {
+    const index = materials.findIndex(m => m.id === materialId)
+    if (index === -1) return
+    
+    const materialToCopy = materials[index]
+    const newMaterial: Material = {
+      id: Date.now().toString(),
+      date: materialToCopy.date,
+      name: "",
+      quantity: 0,
+      unitPrice: 0,
+    }
+    
+    const newMaterials = [...materials]
+    newMaterials.splice(index + 1, 0, newMaterial)
+    setMaterials(newMaterials)
+    
+    // Start editing the new material immediately
+    setTimeout(() => {
+      startEditing(newMaterial)
+    }, 100)
+    
+    toast.success("New row inserted - please fill in the details")
+  }
+
   // Handle material name input change
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
@@ -751,7 +777,7 @@ export default function Home() {
     return { totalQuantity, totalAmount }
   }
 
-  // Export to PDF
+  // Export to PDF - Professional layout
   const exportToPDF = () => {
     if (materials.length === 0) {
       toast.warning("No data to export")
@@ -759,74 +785,146 @@ export default function Home() {
     }
 
     try {
-      // Create new PDF document
       const doc = new jsPDF({
         orientation: "portrait",
         unit: "mm",
       })
 
-      // Add company and customer information
-      doc.setFontSize(18)
-      doc.text(getCompanyName(), doc.internal.pageSize.getWidth() / 2, 15, { align: "center" })
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const margin = 15
 
+      // Draw header border/frame
+      doc.setDrawColor(0, 51, 102)
+      doc.setLineWidth(0.5)
+      doc.rect(margin - 5, 8, pageWidth - 2 * (margin - 5), 45)
+
+      // Company name - bold and centered
+      doc.setFontSize(16)
+      doc.setFont("helvetica", "bold")
+      doc.setTextColor(0, 51, 102)
+      doc.text(getCompanyName(), pageWidth / 2, 18, { align: "center" })
+
+      // Subtitle
       doc.setFontSize(12)
-      doc.text(`Customer: ${customerName}`, 14, 25)
-      doc.text(`Date: ${formatDate(new Date().toISOString().split("T")[0])}`, 14, 32)
+      doc.setFont("helvetica", "normal")
+      doc.setTextColor(80, 80, 80)
+      doc.text("MATERIALS DELIVERY NOTE", pageWidth / 2, 26, { align: "center" })
+
+      // Horizontal line under title
+      doc.setDrawColor(0, 51, 102)
+      doc.setLineWidth(0.3)
+      doc.line(margin, 30, pageWidth - margin, 30)
+
+      // Customer and report info - two columns
+      doc.setFontSize(10)
+      doc.setTextColor(0, 0, 0)
+      doc.setFont("helvetica", "bold")
+      doc.text("Customer:", margin, 38)
+      doc.text("Date:", pageWidth / 2 + 10, 38)
+      
+      doc.setFont("helvetica", "normal")
+      doc.text(customerName, margin + 22, 38)
+      doc.text(formatDate(new Date().toISOString().split("T")[0]), pageWidth / 2 + 22, 38)
+
       if (reportNumber) {
-        doc.text(`Report No: ${reportNumber}`, 14, 39)
+        doc.setFont("helvetica", "bold")
+        doc.text("Report No:", margin, 45)
+        doc.setFont("helvetica", "normal")
+        doc.text(reportNumber, margin + 25, 45)
       }
 
-      // Define the columns for the table
-      const columns = ["Date", "Material Name", "Quantity", "Unit Price (﷼)", "Total Price (﷼)"]
+      // Define columns with proper widths
+      const columns = [
+        { header: "S.No", dataKey: "sno" },
+        { header: "Date", dataKey: "date" },
+        { header: "Material Name", dataKey: "name" },
+        { header: "Qty", dataKey: "qty" },
+        { header: "Unit Price", dataKey: "price" },
+        { header: "Total", dataKey: "total" },
+      ]
 
-      // Prepare the data for the table
-      const data = materials.map((material) => [
-        formatDate(material.date),
-        material.name,
-        material.quantity.toFixed(2),
-        material.unitPrice.toFixed(2),
-        (material.quantity * material.unitPrice).toFixed(2),
-      ])
+      // Prepare data with serial numbers
+      const data = materials.map((material, index) => ({
+        sno: (index + 1).toString(),
+        date: formatDate(material.date),
+        name: material.name,
+        qty: material.quantity.toFixed(2),
+        price: material.unitPrice.toFixed(2),
+        total: (material.quantity * material.unitPrice).toFixed(2),
+      }))
 
-      // Add a grand total row
-      data.push(["", "GRAND TOTAL", grandTotalQuantity.toFixed(2), "", grandTotal.toFixed(2)])
-
-      // Add table to the PDF
+      // Add table
       autoTable(doc, {
-        head: [columns],
+        columns: columns,
         body: data,
-        margin: { top: reportNumber ? 47 : 40 },
-        theme: "grid",
+        startY: 55,
+        margin: { left: margin, right: margin },
+        theme: "striped",
         styles: {
           cellPadding: 3,
-          fontSize: 10,
-          lineColor: [0, 0, 0],
+          fontSize: 9,
+          lineColor: [200, 200, 200],
           lineWidth: 0.1,
+          valign: "middle",
         },
         headStyles: {
-          fillColor: [220, 220, 220],
-          textColor: [0, 0, 0],
+          fillColor: [0, 51, 102],
+          textColor: [255, 255, 255],
           fontStyle: "bold",
+          halign: "center",
+          fontSize: 9,
         },
-        footStyles: {
-          fillColor: [240, 240, 240],
-          textColor: [0, 0, 0],
-          fontStyle: "bold",
+        bodyStyles: {
+          textColor: [50, 50, 50],
+        },
+        alternateRowStyles: {
+          fillColor: [245, 247, 250],
+        },
+        columnStyles: {
+          sno: { halign: "center", cellWidth: 12 },
+          date: { halign: "center", cellWidth: 28 },
+          name: { halign: "left", cellWidth: "auto" },
+          qty: { halign: "right", cellWidth: 22 },
+          price: { halign: "right", cellWidth: 28 },
+          total: { halign: "right", cellWidth: 28 },
         },
         didDrawPage: (data) => {
-          // Footer
-          const str = "Page " + doc.getNumberOfPages()
-          doc.setFontSize(10)
-
-          // jsPDF 1.4+ uses getHeight, <1.4 uses .height
-          const pageSize = doc.internal.pageSize
-          const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight()
-          doc.text(str, data.settings.margin.left, pageHeight - 10)
+          // Page number footer
+          const pageCount = doc.getNumberOfPages()
+          doc.setFontSize(8)
+          doc.setTextColor(128, 128, 128)
+          doc.text(
+            `Page ${data.pageNumber} of ${pageCount}`,
+            pageWidth / 2,
+            pageHeight - 10,
+            { align: "center" }
+          )
         },
       })
 
+      // Add grand total section after table
+      const finalY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5
+
+      // Grand total box
+      doc.setFillColor(0, 51, 102)
+      doc.rect(pageWidth - margin - 70, finalY, 70, 12, "F")
+      
+      doc.setFontSize(10)
+      doc.setFont("helvetica", "bold")
+      doc.setTextColor(255, 255, 255)
+      doc.text("GRAND TOTAL:", pageWidth - margin - 65, finalY + 8)
+      doc.text(`${grandTotal.toFixed(2)}`, pageWidth - margin - 5, finalY + 8, { align: "right" })
+
+      // Total quantity
+      doc.setTextColor(0, 0, 0)
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(9)
+      doc.text(`Total Quantity: ${grandTotalQuantity.toFixed(2)}`, margin, finalY + 8)
+
       // Save the PDF
       doc.save(`${customerName}_Materials_Report_${new Date().toISOString().split("T")[0]}.pdf`)
+      toast.success("PDF exported successfully")
     } catch (error) {
       console.error("Error exporting to PDF:", error)
       toast.error("Failed to export to PDF. Please try again.")
@@ -1791,23 +1889,23 @@ export default function Home() {
                   {materials.length === 0 ? (
                     <p className="text-center text-muted-foreground py-4">No materials added yet</p>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
                       <table className="w-full border-collapse">
                         <thead>
-                          <tr className="bg-muted border-b">
-                            <th className="p-2 text-left">Date</th>
-                            <th className="p-2 text-left">Material Name</th>
-                            <th className="p-2 text-right">Quantity</th>
-                            <th className="p-2 text-right">Unit Price (﷼)</th>
-                            <th className="p-2 text-right">Total Price (﷼)</th>
-                            <th className="p-2 text-right print:hidden">Actions</th>
+                          <tr className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
+                            <th className="px-4 py-3 text-left font-semibold text-sm">Date</th>
+                            <th className="px-4 py-3 text-left font-semibold text-sm">Material Name</th>
+                            <th className="px-4 py-3 text-right font-semibold text-sm">Quantity</th>
+                            <th className="px-4 py-3 text-right font-semibold text-sm">Unit Price (﷼)</th>
+                            <th className="px-4 py-3 text-right font-semibold text-sm">Total Price (﷼)</th>
+                            <th className="px-4 py-3 text-center font-semibold text-sm print:hidden">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {sortedDates.map((date, dateIndex) => (
                             <React.Fragment key={date}>
                               {groupedMaterials[date].map((material, index) => (
-                                <tr key={material.id} className="border-b hover:bg-muted/50">
+                                <tr key={material.id} className={`border-b border-gray-100 dark:border-gray-700 transition-colors ${index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800/50'} hover:bg-blue-50 dark:hover:bg-blue-900/20`}>
                                   {editingId === material.id ? (
                                     <>
                                       <td className="p-2">
@@ -1926,6 +2024,7 @@ export default function Home() {
                                             size="sm"
                                             onClick={() => startEditing(material)}
                                             className="h-8 w-8 p-0"
+                                            title="Edit"
                                           >
                                             <span className="sr-only">Edit</span>
                                             <Pencil className="h-4 w-4" />
@@ -1933,10 +2032,21 @@ export default function Home() {
                                           <Button
                                             variant="ghost"
                                             size="sm"
+                                            onClick={() => insertAfter(material.id)}
+                                            className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                                            title="Insert row after"
+                                          >
+                                            <span className="sr-only">Insert After</span>
+                                            <PlusCircle className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
                                             onClick={() => {
                                               setMaterials(materials.filter((m) => m.id !== material.id))
                                             }}
-                                            className="h-8 w-8 p-0"
+                                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                            title="Delete"
                                           >
                                             <span className="sr-only">Delete</span>
                                             <X className="h-4 w-4" />
@@ -1948,30 +2058,30 @@ export default function Home() {
                                 </tr>
                               ))}
                               {/* Subtotal for date group */}
-                              <tr className="bg-muted/30">
-                                <td colSpan={4} className="p-2 text-right font-medium">
+                              <tr className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 border-t-2 border-blue-200 dark:border-blue-700">
+                                <td colSpan={4} className="px-4 py-2 text-right font-semibold text-blue-800 dark:text-blue-200">
                                   Subtotal for {formatDate(date)}:
                                 </td>
-                                <td className="p-2 text-right font-medium">
+                                <td className="px-4 py-2 text-right font-semibold text-blue-800 dark:text-blue-200">
                                   ﷼ {subtotalsByDate[dateIndex].subtotal.toFixed(2)}
                                 </td>
                                 <td className="print:hidden"></td>
                               </tr>
                               {/* Gap after each date group */}
-                              <tr className="h-4 bg-muted/10">
+                              <tr className="h-2 bg-gray-100 dark:bg-gray-800">
                                 <td colSpan={6}></td>
                               </tr>
                             </React.Fragment>
                           ))}
                         </tbody>
-                        <tfoot className="border-t-2 border-muted">
-                          <tr>
-                            <td colSpan={2} className="p-2 text-right font-bold">
-                              Grand Total:
+                        <tfoot>
+                          <tr className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
+                            <td colSpan={2} className="px-4 py-3 text-right font-bold text-sm">
+                              GRAND TOTAL:
                             </td>
-                            <td className="p-2 text-right font-bold">{grandTotalQuantity.toFixed(2)}</td>
-                            <td className="p-2 text-right font-bold"></td>
-                            <td className="p-2 text-right font-bold">﷼ {grandTotal.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right font-bold text-sm">{grandTotalQuantity.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right font-bold text-sm"></td>
+                            <td className="px-4 py-3 text-right font-bold text-sm">﷼ {grandTotal.toFixed(2)}</td>
                             <td className="print:hidden"></td>
                           </tr>
                         </tfoot>
