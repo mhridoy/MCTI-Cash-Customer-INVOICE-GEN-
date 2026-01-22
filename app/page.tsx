@@ -1642,7 +1642,7 @@ export default function Home() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="bg-gray-100 dark:bg-gray-800">
+                        <tr className="bg-gray-100">
                           <th className="px-4 py-3 text-left font-semibold text-sm">Report No</th>
                           <th className="px-4 py-3 text-left font-semibold text-sm">Customer Name</th>
                           <th className="px-4 py-3 text-left font-semibold text-sm">Date Created</th>
@@ -1655,19 +1655,19 @@ export default function Home() {
                         {savedReports.map((report, index) => (
                           <tr 
                             key={report.rowIndex} 
-                            className={`border-b hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors ${
-                              selectedReport?.rowIndex === report.rowIndex ? 'bg-blue-100 dark:bg-blue-900/40' : ''
-                            } ${index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800/50'}`}
+                                                        className={`border-b hover:bg-blue-50 transition-colors ${
+                                                          selectedReport?.rowIndex === report.rowIndex ? 'bg-blue-100' : ''
+                                                        } ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
                           >
                             <td className="px-4 py-3">
-                              <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                              <span className="font-mono font-bold text-blue-600">
                                 #{report.reportNumber}
                               </span>
                             </td>
                             <td className="px-4 py-3 font-medium">{report.customerName}</td>
                             <td className="px-4 py-3 text-muted-foreground">{report.dateCreated}</td>
                             <td className="px-4 py-3 text-right font-medium">{report.totalQuantity.toLocaleString()}</td>
-                            <td className="px-4 py-3 text-right font-bold text-green-600 dark:text-green-400">
+                            <td className="px-4 py-3 text-right font-bold text-green-600">
                               {report.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             <td className="px-4 py-3">
@@ -1889,7 +1889,7 @@ export default function Home() {
                   {materials.length === 0 ? (
                     <p className="text-center text-muted-foreground py-4">No materials added yet</p>
                   ) : (
-                    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                    <div className="overflow-x-auto rounded-lg border border-gray-200">
                       <table className="w-full border-collapse">
                         <thead>
                           <tr className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
@@ -1905,7 +1905,7 @@ export default function Home() {
                           {sortedDates.map((date, dateIndex) => (
                             <React.Fragment key={date}>
                               {groupedMaterials[date].map((material, index) => (
-                                <tr key={material.id} className={`border-b border-gray-100 dark:border-gray-700 transition-colors ${index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800/50'} hover:bg-blue-50 dark:hover:bg-blue-900/20`}>
+                                <tr key={material.id} className={`border-b border-gray-100 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50`}>
                                   {editingId === material.id ? (
                                     <>
                                       <td className="p-2">
@@ -2058,17 +2058,17 @@ export default function Home() {
                                 </tr>
                               ))}
                               {/* Subtotal for date group */}
-                              <tr className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 border-t-2 border-blue-200 dark:border-blue-700">
-                                <td colSpan={4} className="px-4 py-2 text-right font-semibold text-blue-800 dark:text-blue-200">
-                                  Subtotal for {formatDate(date)}:
-                                </td>
-                                <td className="px-4 py-2 text-right font-semibold text-blue-800 dark:text-blue-200">
+                                                            <tr className="bg-gradient-to-r from-blue-50 to-blue-100 border-t-2 border-blue-200">
+                                                              <td colSpan={4} className="px-4 py-2 text-right font-semibold text-blue-800">
+                                                                Subtotal for {formatDate(date)}:
+                                                              </td>
+                                                              <td className="px-4 py-2 text-right font-semibold text-blue-800">
                                   ﷼ {subtotalsByDate[dateIndex].subtotal.toFixed(2)}
                                 </td>
                                 <td className="print:hidden"></td>
                               </tr>
                               {/* Gap after each date group */}
-                              <tr className="h-2 bg-gray-100 dark:bg-gray-800">
+                              <tr className="h-2 bg-gray-100">
                                 <td colSpan={6}></td>
                               </tr>
                             </React.Fragment>
