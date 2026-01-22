@@ -99,27 +99,27 @@ export default function Home() {
   const [reportNumber, setReportNumber] = useState<string | null>(null)
   const [isSavingToSheets, setIsSavingToSheets] = useState(false)
 
-  // Database view state
-  interface DatabaseRecord {
+  // Password protection for Head Office
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false)
+  const [passwordInput, setPasswordInput] = useState("")
+  const [isPasswordVerified, setIsPasswordVerified] = useState(false)
+  const HEAD_OFFICE_PASSWORD = "Password2025"
+
+  // Saved reports state
+  interface SavedReport {
     rowIndex: number
     reportNumber: string
-    date: string
     customerName: string
-    materialName: string
-    quantity: number
-    unitPrice: number
-    totalPrice: number
+    dateCreated: string
+    totalQuantity: number
+    totalAmount: number
+    materials: Material[]
     branch: string
   }
-  const [showDatabaseView, setShowDatabaseView] = useState(false)
-  const [databaseRecords, setDatabaseRecords] = useState<DatabaseRecord[]>([])
-  const [isLoadingDatabase, setIsLoadingDatabase] = useState(false)
-  const [editingDbRecord, setEditingDbRecord] = useState<number | null>(null)
-  const [dbEditDate, setDbEditDate] = useState("")
-  const [dbEditCustomerName, setDbEditCustomerName] = useState("")
-  const [dbEditMaterialName, setDbEditMaterialName] = useState("")
-  const [dbEditQuantity, setDbEditQuantity] = useState("")
-  const [dbEditUnitPrice, setDbEditUnitPrice] = useState("")
+  const [showSavedReports, setShowSavedReports] = useState(false)
+  const [savedReports, setSavedReports] = useState<SavedReport[]>([])
+  const [isLoadingReports, setIsLoadingReports] = useState(false)
+  const [selectedReport, setSelectedReport] = useState<SavedReport | null>(null)
 
   // Input refs for focus management
   const nameInputRef = useRef<HTMLInputElement>(null)
@@ -230,98 +230,108 @@ export default function Home() {
     }
   }
 
-  const fetchDatabaseRecords = async () => {
+  const fetchSavedReports = async () => {
     if (!selectedBranch) return
-    setIsLoadingDatabase(true)
+    setIsLoadingReports(true)
     try {
-      const response = await fetch(`/api/sheets?branch=${selectedBranch}&action=getData`)
+      const response = await fetch(`/api/sheets?branch=${selectedBranch}&action=getReports`)
       const data = await response.json()
       if (data.success) {
-        setDatabaseRecords(data.data)
+        setSavedReports(data.reports)
       } else {
-        toast.error(data.error || "Failed to fetch database records")
+        toast.error(data.error || "Failed to fetch saved reports")
       }
     } catch (error) {
-      console.error("Error fetching database records:", error)
-      toast.error("Failed to fetch database records")
+      console.error("Error fetching saved reports:", error)
+      toast.error("Failed to fetch saved reports")
     } finally {
-      setIsLoadingDatabase(false)
+      setIsLoadingReports(false)
     }
   }
 
-  const startEditingDbRecord = (record: DatabaseRecord) => {
-    setEditingDbRecord(record.rowIndex)
-    setDbEditDate(record.date)
-    setDbEditCustomerName(record.customerName)
-    setDbEditMaterialName(record.materialName)
-    setDbEditQuantity(String(record.quantity))
-    setDbEditUnitPrice(String(record.unitPrice))
+  const loadReport = (report: SavedReport) => {
+    setCustomerName(report.customerName)
+    setMaterials(report.materials)
+    setReportNumber(report.reportNumber)
+    setSelectedReport(report)
+    setShowSavedReports(false)
+    setIsCustomerSet(true)
+    toast.success(`Loaded Report #${report.reportNumber}`)
   }
 
-  const cancelEditingDbRecord = () => {
-    setEditingDbRecord(null)
-    setDbEditDate("")
-    setDbEditCustomerName("")
-    setDbEditMaterialName("")
-    setDbEditQuantity("")
-    setDbEditUnitPrice("")
-  }
-
-  const saveDbRecord = async (rowIndex: number) => {
-    if (!selectedBranch) return
+  const updateReport = async () => {
+    if (!selectedBranch || !selectedReport) return
     try {
       const response = await fetch("/api/sheets", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           branch: selectedBranch,
-          rowIndex,
-          date: dbEditDate,
-          customerName: dbEditCustomerName,
-          materialName: dbEditMaterialName,
-          quantity: parseFloat(dbEditQuantity) || 0,
-          unitPrice: parseFloat(dbEditUnitPrice) || 0,
+          rowIndex: selectedReport.rowIndex,
+          customerName,
+          materials,
+          reportNumber: selectedReport.reportNumber,
         }),
       })
       const data = await response.json()
       if (data.success) {
-        toast.success("Record updated successfully")
-        cancelEditingDbRecord()
-        fetchDatabaseRecords()
+        toast.success("Report updated successfully")
+        fetchSavedReports()
       } else {
-        toast.error(data.error || "Failed to update record")
+        toast.error(data.error || "Failed to update report")
       }
     } catch (error) {
-      console.error("Error updating record:", error)
-      toast.error("Failed to update record")
+      console.error("Error updating report:", error)
+      toast.error("Failed to update report")
     }
   }
 
-  const deleteDbRecord = async (rowIndex: number) => {
+  const deleteReport = async (rowIndex: number) => {
     if (!selectedBranch) return
-    if (!confirm("Are you sure you want to delete this record?")) return
+    if (!confirm("Are you sure you want to delete this report? This cannot be undone.")) return
     try {
       const response = await fetch(`/api/sheets?branch=${selectedBranch}&rowIndex=${rowIndex}`, {
         method: "DELETE",
       })
       const data = await response.json()
       if (data.success) {
-        toast.success("Record deleted successfully")
-        fetchDatabaseRecords()
+        toast.success("Report deleted successfully")
+        fetchSavedReports()
+        if (selectedReport?.rowIndex === rowIndex) {
+          setSelectedReport(null)
+        }
       } else {
-        toast.error(data.error || "Failed to delete record")
+        toast.error(data.error || "Failed to delete report")
       }
     } catch (error) {
-      console.error("Error deleting record:", error)
-      toast.error("Failed to delete record")
+      console.error("Error deleting report:", error)
+      toast.error("Failed to delete report")
     }
   }
 
-  const toggleDatabaseView = () => {
-    if (!showDatabaseView) {
-      fetchDatabaseRecords()
+  const toggleSavedReports = () => {
+    if (!showSavedReports) {
+      fetchSavedReports()
     }
-    setShowDatabaseView(!showDatabaseView)
+    setShowSavedReports(!showSavedReports)
+  }
+
+  const verifyPassword = () => {
+    if (passwordInput === HEAD_OFFICE_PASSWORD) {
+      setIsPasswordVerified(true)
+      setShowPasswordPrompt(false)
+      setPasswordInput("")
+      setSelectedBranch("HEAD_OFFICE")
+      setIsBranchSet(true)
+      toast.success("Access granted to Head Office")
+    } else {
+      toast.error("Incorrect password")
+      setPasswordInput("")
+    }
+  }
+
+  const handleHeadOfficeSelect = () => {
+    setShowPasswordPrompt(true)
   }
 
   // Clear saved data
@@ -1356,6 +1366,48 @@ export default function Home() {
         </>
       )}
 
+      {/* Password Prompt Modal for Head Office */}
+      {showPasswordPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle className="text-center">Head Office Access</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-center text-muted-foreground">
+                  Please enter the password to access Head Office:
+                </p>
+                <Input
+                  type="password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="Enter password"
+                  className="text-lg"
+                  autoFocus
+                  onKeyDown={(e) => e.key === "Enter" && verifyPassword()}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      setShowPasswordPrompt(false)
+                      setPasswordInput("")
+                    }}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={verifyPassword} className="flex-1">
+                    Verify
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {!isBranchSet ? (
         // Branch Selection Form
         <Card className="mb-8 max-w-md mx-auto">
@@ -1368,11 +1420,13 @@ export default function Home() {
                 Please select the branch you are working from:
               </p>
               <Button
-                onClick={() => handleBranchSelect("HEAD_OFFICE")}
+                onClick={handleHeadOfficeSelect}
                 className="w-full text-lg py-6 h-auto whitespace-normal"
                 variant="outline"
               >
-                {BRANCH_OPTIONS.HEAD_OFFICE}
+                <span className="flex items-center gap-2">
+                  🔒 {BRANCH_OPTIONS.HEAD_OFFICE}
+                </span>
               </Button>
               <Button
                 onClick={() => handleBranchSelect("MCTI_TASLIYA")}
@@ -1425,139 +1479,141 @@ export default function Home() {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button 
-                    variant="default" 
-                    onClick={saveToGoogleSheets} 
-                    disabled={isSavingToSheets || materials.length === 0}
-                  >
-                    {isSavingToSheets ? "Saving..." : "Save to Database"}
-                  </Button>
+                  {selectedReport ? (
+                    <Button 
+                      variant="default" 
+                      onClick={updateReport} 
+                      disabled={isSavingToSheets || materials.length === 0}
+                    >
+                      {isSavingToSheets ? "Updating..." : "Update Report"}
+                    </Button>
+                  ) : (
+                    <Button 
+                      variant="default" 
+                      onClick={saveToGoogleSheets} 
+                      disabled={isSavingToSheets || materials.length === 0}
+                    >
+                      {isSavingToSheets ? "Saving..." : "Save to Database"}
+                    </Button>
+                  )}
                   <Button 
                     variant="secondary" 
-                    onClick={toggleDatabaseView}
+                    onClick={toggleSavedReports}
                   >
-                    {showDatabaseView ? "Hide Database" : "View Database"}
+                    {showSavedReports ? "Hide Saved Reports" : "View Saved Reports"}
                   </Button>
-                  <Button variant="outline" onClick={handleReset}>
-                    Start Over
+                  <Button variant="outline" onClick={() => {
+                    handleReset()
+                    setSelectedReport(null)
+                  }}>
+                    New Report
                   </Button>
                   <Button variant="destructive" onClick={clearSavedData}>
                     <Trash2 className="mr-2 h-4 w-4" />
-                    Clear Saved Data
+                    Clear Local Data
                   </Button>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Database Records View */}
-          {showDatabaseView && (
+          {/* Saved Reports View */}
+          {showSavedReports && (
             <Card className="mb-8 print:hidden">
-              <CardHeader>
+              <CardHeader className="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-t-lg">
                 <CardTitle className="flex justify-between items-center">
-                  <span>Database Records</span>
-                  <Button variant="outline" size="sm" onClick={fetchDatabaseRecords} disabled={isLoadingDatabase}>
-                    {isLoadingDatabase ? "Loading..." : "Refresh"}
+                  <span className="text-xl font-bold">Saved Reports</span>
+                  <Button variant="secondary" size="sm" onClick={fetchSavedReports} disabled={isLoadingReports}>
+                    {isLoadingReports ? "Loading..." : "Refresh"}
                   </Button>
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                {isLoadingDatabase ? (
-                  <p className="text-center py-4">Loading records...</p>
-                ) : databaseRecords.length === 0 ? (
-                  <p className="text-center py-4 text-muted-foreground">No records found in database</p>
+              <CardContent className="p-0">
+                {isLoadingReports ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span className="ml-3 text-muted-foreground">Loading reports...</span>
+                  </div>
+                ) : savedReports.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="text-4xl mb-4">📋</div>
+                    <p className="text-muted-foreground text-lg">No saved reports found</p>
+                    <p className="text-sm text-muted-foreground mt-2">Save your first report to see it here</p>
+                  </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full border-collapse">
+                    <table className="w-full">
                       <thead>
-                        <tr className="bg-muted">
-                          <th className="border p-2 text-left">Report No</th>
-                          <th className="border p-2 text-left">Date</th>
-                          <th className="border p-2 text-left">Customer</th>
-                          <th className="border p-2 text-left">Material</th>
-                          <th className="border p-2 text-right">Qty</th>
-                          <th className="border p-2 text-right">Unit Price</th>
-                          <th className="border p-2 text-right">Total</th>
-                          <th className="border p-2 text-center">Actions</th>
+                        <tr className="bg-gray-100 dark:bg-gray-800">
+                          <th className="px-4 py-3 text-left font-semibold text-sm">Report No</th>
+                          <th className="px-4 py-3 text-left font-semibold text-sm">Customer Name</th>
+                          <th className="px-4 py-3 text-left font-semibold text-sm">Date Created</th>
+                          <th className="px-4 py-3 text-right font-semibold text-sm">Total Qty</th>
+                          <th className="px-4 py-3 text-right font-semibold text-sm">Total Amount</th>
+                          <th className="px-4 py-3 text-center font-semibold text-sm">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {databaseRecords.map((record) => (
-                          <tr key={record.rowIndex} className="hover:bg-muted/50">
-                            {editingDbRecord === record.rowIndex ? (
-                              <>
-                                <td className="border p-2">{record.reportNumber}</td>
-                                <td className="border p-2">
-                                  <Input
-                                    type="date"
-                                    value={dbEditDate}
-                                    onChange={(e) => setDbEditDate(e.target.value)}
-                                    className="w-full"
-                                  />
-                                </td>
-                                <td className="border p-2">
-                                  <Input
-                                    type="text"
-                                    value={dbEditCustomerName}
-                                    onChange={(e) => setDbEditCustomerName(e.target.value)}
-                                    className="w-full"
-                                  />
-                                </td>
-                                <td className="border p-2">
-                                  <Input
-                                    type="text"
-                                    value={dbEditMaterialName}
-                                    onChange={(e) => setDbEditMaterialName(e.target.value)}
-                                    className="w-full"
-                                  />
-                                </td>
-                                <td className="border p-2">
-                                  <Input
-                                    type="number"
-                                    value={dbEditQuantity}
-                                    onChange={(e) => setDbEditQuantity(e.target.value)}
-                                    className="w-full text-right"
-                                  />
-                                </td>
-                                <td className="border p-2">
-                                  <Input
-                                    type="number"
-                                    value={dbEditUnitPrice}
-                                    onChange={(e) => setDbEditUnitPrice(e.target.value)}
-                                    className="w-full text-right"
-                                  />
-                                </td>
-                                <td className="border p-2 text-right">
-                                  {((parseFloat(dbEditQuantity) || 0) * (parseFloat(dbEditUnitPrice) || 0)).toFixed(2)}
-                                </td>
-                                <td className="border p-2">
-                                  <div className="flex gap-1 justify-center">
-                                    <Button size="sm" onClick={() => saveDbRecord(record.rowIndex)}>Save</Button>
-                                    <Button size="sm" variant="outline" onClick={cancelEditingDbRecord}>Cancel</Button>
-                                  </div>
-                                </td>
-                              </>
-                            ) : (
-                              <>
-                                <td className="border p-2">{record.reportNumber}</td>
-                                <td className="border p-2">{record.date}</td>
-                                <td className="border p-2">{record.customerName}</td>
-                                <td className="border p-2">{record.materialName}</td>
-                                <td className="border p-2 text-right">{record.quantity.toFixed(2)}</td>
-                                <td className="border p-2 text-right">{record.unitPrice.toFixed(2)}</td>
-                                <td className="border p-2 text-right">{record.totalPrice.toFixed(2)}</td>
-                                <td className="border p-2">
-                                  <div className="flex gap-1 justify-center">
-                                    <Button size="sm" variant="outline" onClick={() => startEditingDbRecord(record)}>
-                                      <Pencil className="h-3 w-3" />
-                                    </Button>
-                                    <Button size="sm" variant="destructive" onClick={() => deleteDbRecord(record.rowIndex)}>
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </td>
-                              </>
-                            )}
+                        {savedReports.map((report, index) => (
+                          <tr 
+                            key={report.rowIndex} 
+                            className={`border-b hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors ${
+                              selectedReport?.rowIndex === report.rowIndex ? 'bg-blue-100 dark:bg-blue-900/40' : ''
+                            } ${index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800/50'}`}
+                          >
+                            <td className="px-4 py-3">
+                              <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                                #{report.reportNumber}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 font-medium">{report.customerName}</td>
+                            <td className="px-4 py-3 text-muted-foreground">{report.dateCreated}</td>
+                            <td className="px-4 py-3 text-right font-medium">{report.totalQuantity.toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right font-bold text-green-600 dark:text-green-400">
+                              {report.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex gap-2 justify-center">
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => loadReport(report)}
+                                  className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                                >
+                                  <Pencil className="h-3 w-3 mr-1" />
+                                  Edit
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => {
+                                    loadReport(report)
+                                    setTimeout(() => exportToPDF(), 500)
+                                  }}
+                                  className="text-green-600 border-green-600 hover:bg-green-50"
+                                >
+                                  PDF
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => {
+                                    loadReport(report)
+                                    setTimeout(() => handlePrint(), 500)
+                                  }}
+                                  className="text-purple-600 border-purple-600 hover:bg-purple-50"
+                                >
+                                  Print
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="destructive"
+                                  onClick={() => deleteReport(report.rowIndex)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
