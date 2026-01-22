@@ -27,7 +27,7 @@ async function getGoogleSheetsClient() {
 }
 
 async function getNextReportNumber(sheets: ReturnType<typeof google.sheets>, branch: string): Promise<string> {
-  const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice" : "MCTI_Tasliya"
+  const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice_Reports" : "MCTI_Tasliya_Reports"
   
   try {
     const response = await sheets.spreadsheets.values.get({
@@ -84,10 +84,10 @@ async function ensureSheetExists(sheets: ReturnType<typeof google.sheets>, sheet
       
       await sheets.spreadsheets.values.update({
         spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!A1:H1`,
+        range: `${sheetName}!A1:G1`,
         valueInputOption: "RAW",
         requestBody: {
-          values: [["Report No", "Date", "Customer Name", "Material Name", "Quantity", "Unit Price", "Total Price", "Branch"]],
+          values: [["Report No", "Customer Name", "Date Created", "Total Quantity", "Total Amount", "Materials JSON", "Branch"]],
         },
       })
     }
@@ -119,34 +119,41 @@ export async function GET(request: NextRequest) {
     const action = searchParams.get("action") || "getReportNumber"
     
     const sheets = await getGoogleSheetsClient()
-    const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice" : "MCTI_Tasliya"
+    const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice_Reports" : "MCTI_Tasliya_Reports"
     
     await ensureSheetExists(sheets, sheetName)
     
-    if (action === "getData") {
+    if (action === "getReports") {
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!A:H`,
+        range: `${sheetName}!A:G`,
       })
       
       const values = response.data.values || []
       if (values.length <= 1) {
-        return NextResponse.json({ data: [], success: true })
+        return NextResponse.json({ reports: [], success: true })
       }
       
-      const data = values.slice(1).map((row, index) => ({
-        rowIndex: index + 2,
-        reportNumber: row[0] || "",
-        date: row[1] || "",
-        customerName: row[2] || "",
-        materialName: row[3] || "",
-        quantity: parseFloat(row[4]) || 0,
-        unitPrice: parseFloat(row[5]) || 0,
-        totalPrice: parseFloat(row[6]) || 0,
-        branch: row[7] || "",
-      }))
+      const reports = values.slice(1).map((row, index) => {
+        let materials = []
+        try {
+          materials = JSON.parse(row[5] || "[]")
+        } catch {
+          materials = []
+        }
+        return {
+          rowIndex: index + 2,
+          reportNumber: row[0] || "",
+          customerName: row[1] || "",
+          dateCreated: row[2] || "",
+          totalQuantity: parseFloat(row[3]) || 0,
+          totalAmount: parseFloat(row[4]) || 0,
+          materials,
+          branch: row[6] || "",
+        }
+      })
       
-      return NextResponse.json({ data, success: true })
+      return NextResponse.json({ reports, success: true })
     }
     
     const reportNumber = await getNextReportNumber(sheets, branch)
@@ -167,64 +174,70 @@ export async function POST(request: NextRequest) {
     }
     
     const sheets = await getGoogleSheetsClient()
-    const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice" : "MCTI_Tasliya"
+    const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice_Reports" : "MCTI_Tasliya_Reports"
     
     await ensureSheetExists(sheets, sheetName)
     
-    const rows = materials.map((material: { date: string; name: string; quantity: number; unitPrice: number }) => [
+    const totalQuantity = materials.reduce((sum: number, m: { quantity: number }) => sum + m.quantity, 0)
+    const totalAmount = materials.reduce((sum: number, m: { quantity: number; unitPrice: number }) => sum + (m.quantity * m.unitPrice), 0)
+    const dateCreated = new Date().toISOString().split("T")[0]
+    const branchName = branch === "HEAD_OFFICE" ? "Head Office" : "MCTI Tasliya"
+    
+    const row = [
       reportNumber,
-      material.date,
       customerName,
-      material.name,
-      material.quantity,
-      material.unitPrice,
-      material.quantity * material.unitPrice,
-      branch === "HEAD_OFFICE" ? "Head Office" : "MCTI Tasliya",
-    ])
+      dateCreated,
+      totalQuantity,
+      totalAmount,
+      JSON.stringify(materials),
+      branchName,
+    ]
     
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!A:H`,
+      range: `${sheetName}!A:G`,
       valueInputOption: "RAW",
       requestBody: {
-        values: rows,
+        values: [row],
       },
     })
     
-    return NextResponse.json({ success: true, reportNumber, rowsAdded: rows.length })
+    return NextResponse.json({ success: true, reportNumber })
   } catch (error) {
-    console.error("Error saving to Google Sheets:", error)
-    return NextResponse.json({ error: "Failed to save to Google Sheets", success: false }, { status: 500 })
+    console.error("Error saving report:", error)
+    return NextResponse.json({ error: "Failed to save report", success: false }, { status: 500 })
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
-    const { branch, rowIndex, date, customerName, materialName, quantity, unitPrice } = body
+    const { branch, rowIndex, customerName, materials, reportNumber } = body
     
-    if (!branch || !rowIndex || !materialName) {
+    if (!branch || !rowIndex || !customerName || !materials) {
       return NextResponse.json({ error: "Missing required fields", success: false }, { status: 400 })
     }
     
     const sheets = await getGoogleSheetsClient()
-    const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice" : "MCTI_Tasliya"
+    const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice_Reports" : "MCTI_Tasliya_Reports"
     
-    const totalPrice = quantity * unitPrice
+    const totalQuantity = materials.reduce((sum: number, m: { quantity: number }) => sum + m.quantity, 0)
+    const totalAmount = materials.reduce((sum: number, m: { quantity: number; unitPrice: number }) => sum + (m.quantity * m.unitPrice), 0)
+    const branchName = branch === "HEAD_OFFICE" ? "Head Office" : "MCTI Tasliya"
     
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!B${rowIndex}:G${rowIndex}`,
+      range: `${sheetName}!A${rowIndex}:G${rowIndex}`,
       valueInputOption: "RAW",
       requestBody: {
-        values: [[date, customerName, materialName, quantity, unitPrice, totalPrice]],
+        values: [[reportNumber, customerName, new Date().toISOString().split("T")[0], totalQuantity, totalAmount, JSON.stringify(materials), branchName]],
       },
     })
     
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Error updating record:", error)
-    return NextResponse.json({ error: "Failed to update record", success: false }, { status: 500 })
+    console.error("Error updating report:", error)
+    return NextResponse.json({ error: "Failed to update report", success: false }, { status: 500 })
   }
 }
 
@@ -239,7 +252,7 @@ export async function DELETE(request: NextRequest) {
     }
     
     const sheets = await getGoogleSheetsClient()
-    const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice" : "MCTI_Tasliya"
+    const sheetName = branch === "HEAD_OFFICE" ? "HeadOffice_Reports" : "MCTI_Tasliya_Reports"
     
     const sheetId = await getSheetId(sheets, sheetName)
     if (sheetId === null) {
@@ -266,7 +279,7 @@ export async function DELETE(request: NextRequest) {
     
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Error deleting record:", error)
-    return NextResponse.json({ error: "Failed to delete record", success: false }, { status: 500 })
+    console.error("Error deleting report:", error)
+    return NextResponse.json({ error: "Failed to delete report", success: false }, { status: 500 })
   }
 }
