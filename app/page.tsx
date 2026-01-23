@@ -120,6 +120,9 @@ export default function Home() {
   const [savedReports, setSavedReports] = useState<SavedReport[]>([])
   const [isLoadingReports, setIsLoadingReports] = useState(false)
   const [selectedReport, setSelectedReport] = useState<SavedReport | null>(null)
+  
+  // New state for showing saved reports before customer entry
+  const [hasViewedReports, setHasViewedReports] = useState(false)
 
   // Input refs for focus management
   const nameInputRef = useRef<HTMLInputElement>(null)
@@ -150,6 +153,7 @@ export default function Home() {
         }
         if (savedData.customerName) {
           setIsCustomerSet(true)
+          setHasViewedReports(true)
         }
         if (savedData.reportNumber) {
           setReportNumber(savedData.reportNumber)
@@ -255,6 +259,7 @@ export default function Home() {
     setReportNumber(report.reportNumber)
     setSelectedReport(report)
     setShowSavedReports(false)
+    setHasViewedReports(true)
     setIsCustomerSet(true)
     toast.success(`Loaded Report #${report.reportNumber}`)
   }
@@ -324,6 +329,10 @@ export default function Home() {
       setSelectedBranch("HEAD_OFFICE")
       setIsBranchSet(true)
       toast.success("Access granted to Head Office")
+      // Fetch saved reports for Head Office
+      setTimeout(() => {
+        fetchSavedReportsForBranch("HEAD_OFFICE")
+      }, 100)
     } else {
       toast.error("Incorrect password")
       setPasswordInput("")
@@ -342,6 +351,7 @@ export default function Home() {
       setIsBranchSet(false)
       setCustomerName("")
       setIsCustomerSet(false)
+      setHasViewedReports(false)
       setMaterials([])
       setCurrentDate(new Date().toISOString().split("T")[0])
       setName("")
@@ -350,6 +360,8 @@ export default function Home() {
       setSuggestions([])
       setShowSuggestions(false)
       setReportNumber(null)
+      setSelectedReport(null)
+      setSavedReports([])
     }
   }
 
@@ -357,6 +369,35 @@ export default function Home() {
   const handleBranchSelect = (branch: BranchType) => {
     setSelectedBranch(branch)
     setIsBranchSet(true)
+    // Automatically fetch saved reports when branch is selected
+    setTimeout(() => {
+      fetchSavedReportsForBranch(branch)
+    }, 100)
+  }
+  
+  // Fetch saved reports for a specific branch (used after branch selection)
+  const fetchSavedReportsForBranch = async (branch: BranchType) => {
+    setIsLoadingReports(true)
+    try {
+      const response = await fetch(`/api/sheets?branch=${branch}&action=getReports`)
+      const data = await response.json()
+      if (data.success) {
+        setSavedReports(data.reports)
+      }
+    } catch (error) {
+      console.error("Error fetching saved reports:", error)
+    } finally {
+      setIsLoadingReports(false)
+    }
+  }
+  
+  // Handle creating a new report (skip to customer name entry)
+  const handleCreateNewReport = async () => {
+    setHasViewedReports(true)
+    // Fetch report number for new report
+    if (!reportNumber) {
+      await fetchReportNumber()
+    }
   }
 
   // Handle customer form submission
@@ -1445,6 +1486,7 @@ export default function Home() {
     ) {
       setCustomerName("")
       setIsCustomerSet(false)
+      setHasViewedReports(false)
       setMaterials([])
       setCurrentDate(new Date().toISOString().split("T")[0])
       setName("")
@@ -1452,6 +1494,12 @@ export default function Home() {
       setUnitPrice("")
       setSuggestions([])
       setShowSuggestions(false)
+      setReportNumber(null)
+      setSelectedReport(null)
+      // Refresh saved reports list
+      if (selectedBranch) {
+        fetchSavedReportsForBranch(selectedBranch)
+      }
     }
   }
 
@@ -1536,6 +1584,118 @@ export default function Home() {
             </div>
           </CardContent>
         </Card>
+      ) : !hasViewedReports ? (
+        // Saved Reports View - Show before customer name entry
+        <Card className="mb-8 max-w-4xl mx-auto">
+          <CardHeader className="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-t-lg">
+            <CardTitle className="flex justify-between items-center">
+              <span className="text-xl font-bold">Saved Reports - {selectedBranch && BRANCH_OPTIONS[selectedBranch]}</span>
+              <div className="flex gap-2">
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  onClick={() => selectedBranch && fetchSavedReportsForBranch(selectedBranch)} 
+                  disabled={isLoadingReports}
+                >
+                  {isLoadingReports ? "Loading..." : "Refresh"}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    setIsBranchSet(false)
+                    setSelectedBranch(null)
+                    setSavedReports([])
+                  }}
+                  className="text-white border-white hover:bg-white/20"
+                >
+                  Change Branch
+                </Button>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {isLoadingReports ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span className="ml-3 text-muted-foreground">Loading reports...</span>
+              </div>
+            ) : savedReports.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">📋</div>
+                <p className="text-muted-foreground text-lg mb-2">No saved reports found</p>
+                <p className="text-sm text-muted-foreground mb-6">Create your first report to get started</p>
+                <Button onClick={handleCreateNewReport} size="lg" className="text-lg px-8 py-6">
+                  <PlusCircle className="mr-2 h-5 w-5" />
+                  Create New Report
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="px-4 py-3 text-left font-semibold text-sm">Report No</th>
+                        <th className="px-4 py-3 text-left font-semibold text-sm">Customer Name</th>
+                        <th className="px-4 py-3 text-left font-semibold text-sm">Date Created</th>
+                        <th className="px-4 py-3 text-right font-semibold text-sm">Total Qty</th>
+                        <th className="px-4 py-3 text-right font-semibold text-sm">Total Amount</th>
+                        <th className="px-4 py-3 text-center font-semibold text-sm">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {savedReports.map((report, index) => (
+                        <tr 
+                          key={report.rowIndex} 
+                          className={`border-b hover:bg-blue-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                        >
+                          <td className="px-4 py-3">
+                            <span className="font-mono font-bold text-blue-600">
+                              #{report.reportNumber}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-medium">{report.customerName}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{report.dateCreated}</td>
+                          <td className="px-4 py-3 text-right font-medium">{report.totalQuantity.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-right font-bold text-green-600">
+                            {report.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex gap-2 justify-center">
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => loadReport(report)}
+                                className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                              >
+                                <Pencil className="h-3 w-3 mr-1" />
+                                Edit
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="destructive"
+                                onClick={() => deleteReport(report.rowIndex)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="p-6 border-t bg-gray-50">
+                  <Button onClick={handleCreateNewReport} size="lg" className="w-full text-lg py-6">
+                    <PlusCircle className="mr-2 h-5 w-5" />
+                    Create New Report
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
       ) : !isCustomerSet ? (
         // Customer Information Form
         <Card className="mb-8 max-w-md mx-auto">
@@ -1557,9 +1717,19 @@ export default function Home() {
                   required
                 />
               </div>
-              <Button type="submit" className="w-full text-lg py-6">
-                Continue
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => setHasViewedReports(false)}
+                >
+                  Back to Reports
+                </Button>
+                <Button type="submit" className="flex-1 text-lg py-6">
+                  Continue
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>
