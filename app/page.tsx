@@ -1632,6 +1632,12 @@ export default function Home() {
               </div>
             ) : (
               <>
+                <div className="p-4 border-b bg-gray-50">
+                  <Button onClick={handleCreateNewReport} size="lg" className="w-full text-lg py-6">
+                    <PlusCircle className="mr-2 h-5 w-5" />
+                    Create New Report
+                  </Button>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -1685,12 +1691,6 @@ export default function Home() {
                       ))}
                     </tbody>
                   </table>
-                </div>
-                <div className="p-6 border-t bg-gray-50">
-                  <Button onClick={handleCreateNewReport} size="lg" className="w-full text-lg py-6">
-                    <PlusCircle className="mr-2 h-5 w-5" />
-                    Create New Report
-                  </Button>
                 </div>
               </>
             )}
