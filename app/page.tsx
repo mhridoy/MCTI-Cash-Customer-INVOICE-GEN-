@@ -818,7 +818,7 @@ export default function Home() {
     return { totalQuantity, totalAmount }
   }
 
-  // Export to PDF - Professional layout
+  // Export to PDF - Professional layout with dynamic font sizing
   const exportToPDF = () => {
     if (materials.length === 0) {
       toast.warning("No data to export")
@@ -835,19 +835,43 @@ export default function Home() {
       const pageHeight = doc.internal.pageSize.getHeight()
       const margin = 15
 
+      // Dynamic font sizing based on number of items
+      const itemCount = materials.length
+      let tableFontSize: number
+      let headerFontSize: number
+      let cellPadding: number
+      
+      if (itemCount <= 10) {
+        tableFontSize = 11
+        headerFontSize = 11
+        cellPadding = 4
+      } else if (itemCount <= 20) {
+        tableFontSize = 10
+        headerFontSize = 10
+        cellPadding = 3.5
+      } else if (itemCount <= 35) {
+        tableFontSize = 9
+        headerFontSize = 9
+        cellPadding = 3
+      } else {
+        tableFontSize = 8
+        headerFontSize = 8
+        cellPadding = 2.5
+      }
+
       // Draw header border/frame
       doc.setDrawColor(0, 51, 102)
       doc.setLineWidth(0.5)
       doc.rect(margin - 5, 8, pageWidth - 2 * (margin - 5), 45)
 
       // Company name - bold and centered
-      doc.setFontSize(16)
+      doc.setFontSize(18)
       doc.setFont("helvetica", "bold")
       doc.setTextColor(0, 51, 102)
       doc.text(getCompanyName(), pageWidth / 2, 18, { align: "center" })
 
       // Subtitle
-      doc.setFontSize(12)
+      doc.setFontSize(14)
       doc.setFont("helvetica", "normal")
       doc.setTextColor(80, 80, 80)
       doc.text("MATERIALS DELIVERY NOTE", pageWidth / 2, 26, { align: "center" })
@@ -858,7 +882,7 @@ export default function Home() {
       doc.line(margin, 30, pageWidth - margin, 30)
 
       // Customer and report info - two columns
-      doc.setFontSize(10)
+      doc.setFontSize(11)
       doc.setTextColor(0, 0, 0)
       doc.setFont("helvetica", "bold")
       doc.text("Customer:", margin, 38)
@@ -895,16 +919,29 @@ export default function Home() {
         total: (material.quantity * material.unitPrice).toFixed(2),
       }))
 
-      // Add table
+      // Add grand total row as footer data
+      const footerData = [
+        {
+          sno: "",
+          date: "",
+          name: "GRAND TOTAL",
+          qty: grandTotalQuantity.toFixed(2),
+          price: "",
+          total: grandTotal.toFixed(2),
+        },
+      ]
+
+      // Add table with footer included to prevent page break issues
       autoTable(doc, {
         columns: columns,
         body: data,
+        foot: footerData,
         startY: 55,
         margin: { left: margin, right: margin },
         theme: "striped",
         styles: {
-          cellPadding: 3,
-          fontSize: 9,
+          cellPadding: cellPadding,
+          fontSize: tableFontSize,
           lineColor: [200, 200, 200],
           lineWidth: 0.1,
           valign: "middle",
@@ -914,10 +951,16 @@ export default function Home() {
           textColor: [255, 255, 255],
           fontStyle: "bold",
           halign: "center",
-          fontSize: 9,
+          fontSize: headerFontSize,
         },
         bodyStyles: {
           textColor: [50, 50, 50],
+        },
+        footStyles: {
+          fillColor: [0, 51, 102],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          fontSize: headerFontSize,
         },
         alternateRowStyles: {
           fillColor: [245, 247, 250],
@@ -930,10 +973,11 @@ export default function Home() {
           price: { halign: "right", cellWidth: 28 },
           total: { halign: "right", cellWidth: 28 },
         },
+        showFoot: "lastPage",
         didDrawPage: (data) => {
           // Page number footer
           const pageCount = doc.getNumberOfPages()
-          doc.setFontSize(8)
+          doc.setFontSize(9)
           doc.setTextColor(128, 128, 128)
           doc.text(
             `Page ${data.pageNumber} of ${pageCount}`,
@@ -943,25 +987,6 @@ export default function Home() {
           )
         },
       })
-
-      // Add grand total section after table
-      const finalY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5
-
-      // Grand total box
-      doc.setFillColor(0, 51, 102)
-      doc.rect(pageWidth - margin - 70, finalY, 70, 12, "F")
-      
-      doc.setFontSize(10)
-      doc.setFont("helvetica", "bold")
-      doc.setTextColor(255, 255, 255)
-      doc.text("GRAND TOTAL:", pageWidth - margin - 65, finalY + 8)
-      doc.text(`${grandTotal.toFixed(2)}`, pageWidth - margin - 5, finalY + 8, { align: "right" })
-
-      // Total quantity
-      doc.setTextColor(0, 0, 0)
-      doc.setFont("helvetica", "normal")
-      doc.setFontSize(9)
-      doc.text(`Total Quantity: ${grandTotalQuantity.toFixed(2)}`, margin, finalY + 8)
 
       // Save the PDF
       doc.save(`${customerName}_Materials_Report_${new Date().toISOString().split("T")[0]}.pdf`)
