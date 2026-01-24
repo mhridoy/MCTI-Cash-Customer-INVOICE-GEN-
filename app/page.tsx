@@ -1043,18 +1043,25 @@ export default function Home() {
       doc.setTextColor(0, 0, 0)
       yPos += 6
 
-      const summaryColumns = ["Material Name", "Qty", "Avg Price (SAR)", "Total (SAR)"]
-      const summaryData = materialGroups.map((group) => [
+      const summaryColumns = ["S.No", "Material Name", "Qty", "Avg Price (SAR)", "Total (SAR)"]
+      const summaryData = materialGroups.map((group, index) => [
+        (index + 1).toString(),
         group.name,
         group.totalQuantity.toFixed(2),
         group.averagePrice.toFixed(2),
         group.totalAmount.toFixed(2),
       ])
 
-      // Full-width summary table
+      // Grand total footer for summary table
+      const summaryFooter = [
+        ["", "GRAND TOTAL", grandTotals.totalQuantity.toFixed(2), "", grandTotals.totalAmount.toFixed(2)],
+      ]
+
+      // Full-width summary table with grand total footer
       autoTable(doc, {
         head: [summaryColumns],
         body: summaryData,
+        foot: summaryFooter,
         startY: yPos,
         theme: "grid",
         styles: {
@@ -1069,14 +1076,22 @@ export default function Home() {
           fontStyle: "bold",
           cellPadding: 2,
         },
+        footStyles: {
+          fillColor: [50, 50, 50],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          cellPadding: 2,
+        },
         columnStyles: {
-          0: { cellWidth: tableWidth * 0.4 },
-          1: { cellWidth: tableWidth * 0.15, halign: "right" },
-          2: { cellWidth: tableWidth * 0.22, halign: "right" },
-          3: { cellWidth: tableWidth * 0.23, halign: "right" },
+          0: { cellWidth: tableWidth * 0.08, halign: "center" },
+          1: { cellWidth: tableWidth * 0.35 },
+          2: { cellWidth: tableWidth * 0.15, halign: "right" },
+          3: { cellWidth: tableWidth * 0.20, halign: "right" },
+          4: { cellWidth: tableWidth * 0.22, halign: "right" },
         },
         margin: { left: margin, right: margin },
         tableWidth: tableWidth,
+        showFoot: "lastPage",
       })
 
       yPos = doc.lastAutoTable.finalY + 4
@@ -1132,17 +1147,18 @@ export default function Home() {
         const startY = useLeftColumn ? leftY : rightY
         const startX = useLeftColumn ? margin : margin + colWidth + 4
 
-        // Material name header
+        // Material name header with serial number
         doc.setFontSize(7)
         doc.setFont("helvetica", "bold")
         doc.setFillColor(100, 100, 100)
         doc.rect(startX, startY, colWidth, 4, "F")
         doc.setTextColor(255, 255, 255)
-        doc.text(group.name, startX + 2, startY + 2.8)
+        doc.text(`${groupIndex + 1}. ${group.name}`, startX + 2, startY + 2.8)
         doc.setTextColor(0, 0, 0)
 
-        const columns = ["Date", "Qty", "Price", "Total"]
-        const data = group.items.map((item) => [
+        const columns = ["S.No", "Date", "Qty", "Price", "Total"]
+        const data = group.items.map((item, itemIndex) => [
+          (itemIndex + 1).toString(),
           formatDate(item.date),
           item.quantity.toFixed(2),
           item.unitPrice.toFixed(2),
@@ -1150,6 +1166,7 @@ export default function Home() {
         ])
 
         const footData = [[
+          "",
           "Subtotal",
           group.totalQuantity.toFixed(2),
           group.averagePrice.toFixed(2),
@@ -1180,10 +1197,11 @@ export default function Home() {
             fontStyle: "bold",
           },
           columnStyles: {
-            0: { cellWidth: colWidth * 0.3 },
-            1: { cellWidth: colWidth * 0.2, halign: "right" },
-            2: { cellWidth: colWidth * 0.25, halign: "right" },
-            3: { cellWidth: colWidth * 0.25, halign: "right" },
+            0: { cellWidth: colWidth * 0.1, halign: "center" },
+            1: { cellWidth: colWidth * 0.25 },
+            2: { cellWidth: colWidth * 0.2, halign: "right" },
+            3: { cellWidth: colWidth * 0.22, halign: "right" },
+            4: { cellWidth: colWidth * 0.23, halign: "right" },
           },
           margin: { left: startX, right: pageWidth - startX - colWidth },
           tableWidth: colWidth,
@@ -1199,56 +1217,6 @@ export default function Home() {
           rightY = finalY
           useLeftColumn = true
         }
-      })
-
-      // Grand total at the end - full width
-      yPos = Math.max(leftY, rightY) + 3
-      if (yPos + 15 > usableHeight) {
-        doc.addPage()
-        yPos = 10
-      }
-
-      doc.setFillColor(50, 50, 50)
-      doc.rect(margin, yPos, tableWidth, 5, "F")
-      doc.setTextColor(255, 255, 255)
-      doc.setFontSize(9)
-      doc.setFont("helvetica", "bold")
-      doc.text("GRAND TOTAL", pageWidth / 2, yPos + 3.5, { align: "center" })
-      doc.setTextColor(0, 0, 0)
-      yPos += 6
-
-      autoTable(doc, {
-        head: [["Description", "Total Quantity", "Total Amount (SAR)"]],
-        body: [[
-          "All Materials",
-          grandTotals.totalQuantity.toFixed(2),
-          grandTotals.totalAmount.toFixed(2),
-        ]],
-        startY: yPos,
-        theme: "grid",
-        styles: {
-          cellPadding: 2,
-          fontSize: 8,
-          lineColor: [0, 0, 0],
-          lineWidth: 0.2,
-          fontStyle: "bold",
-        },
-        headStyles: {
-          fillColor: [80, 80, 80],
-          textColor: [255, 255, 255],
-          fontStyle: "bold",
-        },
-        bodyStyles: {
-          fillColor: [220, 220, 220],
-          fontStyle: "bold",
-        },
-        columnStyles: {
-          0: { cellWidth: tableWidth * 0.4 },
-          1: { cellWidth: tableWidth * 0.3, halign: "right" },
-          2: { cellWidth: tableWidth * 0.3, halign: "right" },
-        },
-        margin: { left: margin, right: margin },
-        tableWidth: tableWidth,
       })
 
       // Add page numbers
