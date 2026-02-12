@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react"
 import { toast } from "sonner"
-import { PlusCircle, FileDown, Printer, X, FileSpreadsheet, Package, Pencil, Check, Trash2, FileText, RefreshCw, Calendar, User, Hash } from "lucide-react"
+import { PlusCircle, FileDown, Printer, X, FileSpreadsheet, Package, Pencil, Check, Trash2, FileText, RefreshCw, Calendar, User, Hash, Table2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -94,6 +94,7 @@ export default function Home() {
 
   // View state
   const [showStockReport, setShowStockReport] = useState(false)
+  const [showSummaryTable, setShowSummaryTable] = useState(false)
 
   // Report number state
   const [reportNumber, setReportNumber] = useState<string | null>(null)
@@ -816,6 +817,17 @@ export default function Home() {
     const totalQuantity = materialGroups.reduce((sum, group) => sum + group.totalQuantity, 0)
     const totalAmount = materialGroups.reduce((sum, group) => sum + group.totalAmount, 0)
     return { totalQuantity, totalAmount }
+  }
+
+  // Update unit price for all materials with the same name (from editable summary)
+  const updateUnitPriceForMaterial = (materialName: string, newUnitPrice: number) => {
+    const price = Number.parseFloat(newUnitPrice.toString())
+    if (Number.isNaN(price) || price < 0) return
+    const count = materials.filter((m) => m.name === materialName).length
+    setMaterials((prev) =>
+      prev.map((m) => (m.name === materialName ? { ...m, unitPrice: price } : m))
+    )
+    toast.success(`Updated unit price for all ${count} "${materialName}" item(s)`)
   }
 
   // Export to PDF - Professional layout with dynamic font sizing
@@ -2065,6 +2077,110 @@ export default function Home() {
               </form>
             </CardContent>
           </Card>
+
+          {/* Summary Table Button */}
+          <div className="flex flex-wrap justify-end gap-2 mb-4 print:hidden">
+            <Button
+              variant={showSummaryTable ? "default" : "outline"}
+              onClick={() => setShowSummaryTable(!showSummaryTable)}
+              disabled={materials.length === 0}
+              title="একই material এর সব item এর unit price একসাথে পরিবর্তন করুন"
+            >
+              <Table2 className="mr-2 h-4 w-4" />
+              {showSummaryTable ? "Summary Table (Hide)" : "Summary Table"}
+            </Button>
+          </div>
+
+          {/* Editable Summary Table */}
+          {showSummaryTable && materials.length > 0 && (
+            <Card className="mb-8 print:hidden overflow-hidden shadow-md border-2 border-primary/20">
+              <CardHeader className="bg-gradient-to-r from-emerald-800 to-emerald-700 text-white py-4 px-6">
+                <CardTitle className="text-lg font-bold flex items-center gap-2">
+                  <Table2 className="h-5 w-5" />
+                  Editable Summary Table
+                </CardTitle>
+                <p className="text-emerald-100 text-sm mt-1">
+                  Unit Price এ পরিবর্তন করলে ঐ material এর সব item এর price আপডেট হবে
+                </p>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-slate-700 text-white">
+                        <th className="px-5 py-3.5 text-left font-semibold text-sm">Material Name</th>
+                        <th className="px-5 py-3.5 text-center font-semibold text-sm">Count</th>
+                        <th className="px-5 py-3.5 text-right font-semibold text-sm">Total Quantity</th>
+                        <th className="px-5 py-3.5 text-right font-semibold text-sm">Unit Price (﷼) - Editable</th>
+                        <th className="px-5 py-3.5 text-right font-semibold text-sm">Total Amount (﷼)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getMaterialGroups().map((group) => (
+                        <tr
+                          key={`${group.name}-${group.averagePrice}`}
+                          className="border-b border-slate-200 hover:bg-slate-50 transition-colors"
+                        >
+                          <td className="px-5 py-3 font-medium text-slate-800">{group.name}</td>
+                          <td className="px-5 py-3 text-center tabular-nums text-slate-600">
+                            {group.items.length}
+                          </td>
+                          <td className="px-5 py-3 text-right tabular-nums font-medium">
+                            {group.totalQuantity.toFixed(2)}
+                          </td>
+                          <td className="px-5 py-3">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              defaultValue={group.averagePrice.toFixed(2)}
+                              key={`${group.name}-${group.averagePrice}`}
+                              className="text-right w-28 ml-auto block tabular-nums font-medium text-slate-800 border-emerald-200 focus:border-emerald-500"
+                              onBlur={(e) => {
+                                const val = e.target.value
+                                const num = Number.parseFloat(val)
+                                if (!Number.isNaN(num) && num >= 0) {
+                                  updateUnitPriceForMaterial(group.name, num)
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  const input = e.target as HTMLInputElement
+                                  const val = input.value
+                                  const num = Number.parseFloat(val)
+                                  if (!Number.isNaN(num) && num >= 0) {
+                                    updateUnitPriceForMaterial(group.name, num)
+                                  }
+                                  input.blur()
+                                }
+                              }}
+                            />
+                          </td>
+                          <td className="px-5 py-3 text-right font-semibold tabular-nums text-slate-800">
+                            {group.totalAmount.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-800 text-white">
+                        <td className="px-5 py-4 font-bold" colSpan={2}>
+                          Grand Total
+                        </td>
+                        <td className="px-5 py-4 text-right font-bold tabular-nums">
+                          {getStockGrandTotals().totalQuantity.toFixed(2)}
+                        </td>
+                        <td className="px-5 py-4"></td>
+                        <td className="px-5 py-4 text-right font-bold tabular-nums">
+                          ﷼ {grandTotal.toFixed(2)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Export Buttons */}
           <div className="flex flex-wrap justify-end gap-2 mb-4 print:hidden">
