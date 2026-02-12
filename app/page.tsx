@@ -796,7 +796,7 @@ export default function Home() {
       }
     })
 
-    return Array.from(groupMap.values()).sort((a, b) => a.name.localeCompare(b.name))
+    return Array.from(groupMap.values()) /* Input sequence - no ABC sort */
   }
 
   // Get stock items (simplified version of material groups)
