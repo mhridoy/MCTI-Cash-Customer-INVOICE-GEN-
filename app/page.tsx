@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react"
 import { toast } from "sonner"
-import { PlusCircle, FileDown, Printer, X, FileSpreadsheet, Package, Pencil, Check, Trash2 } from "lucide-react"
+import { PlusCircle, FileDown, Printer, X, FileSpreadsheet, Package, Pencil, Check, Trash2, FileText, RefreshCw, Calendar, User, Hash } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -1043,6 +1043,11 @@ export default function Home() {
       doc.setTextColor(0, 0, 0)
       yPos += 6
 
+      // Dynamic sizing for summary - larger font, fit on page 1
+      const summaryRowCount = materialGroups.length + 2 // + header + footer
+      const summaryFontSize = summaryRowCount > 20 ? 8 : summaryRowCount > 12 ? 9 : 10
+      const summaryCellPadding = summaryRowCount > 20 ? 1.5 : 2
+
       const summaryColumns = ["S.No", "Material Name", "Qty", "Avg Price (SAR)", "Total (SAR)"]
       const summaryData = materialGroups.map((group, index) => [
         (index + 1).toString(),
@@ -1057,16 +1062,18 @@ export default function Home() {
         ["", "GRAND TOTAL", grandTotals.totalQuantity.toFixed(2), "", grandTotals.totalAmount.toFixed(2)],
       ]
 
-      // Full-width summary table with grand total footer
+      // Full-width summary table with grand total footer - PAGE 1 ONLY, no splitting
       autoTable(doc, {
         head: [summaryColumns],
         body: summaryData,
         foot: summaryFooter,
         startY: yPos,
         theme: "grid",
+        pageBreak: "avoid", // Keep summary on one page
+        rowPageBreak: "avoid",
         styles: {
-          cellPadding: 1.5,
-          fontSize: 7,
+          cellPadding: summaryCellPadding,
+          fontSize: summaryFontSize,
           lineColor: [0, 0, 0],
           lineWidth: 0.15,
         },
@@ -1074,13 +1081,15 @@ export default function Home() {
           fillColor: [180, 180, 180],
           textColor: [0, 0, 0],
           fontStyle: "bold",
-          cellPadding: 2,
+          cellPadding: summaryCellPadding,
+          fontSize: summaryFontSize,
         },
         footStyles: {
           fillColor: [50, 50, 50],
           textColor: [255, 255, 255],
           fontStyle: "bold",
-          cellPadding: 2,
+          cellPadding: summaryCellPadding,
+          fontSize: summaryFontSize,
         },
         columnStyles: {
           0: { cellWidth: tableWidth * 0.08, halign: "center" },
@@ -1094,7 +1103,10 @@ export default function Home() {
         showFoot: "lastPage",
       })
 
-      yPos = doc.lastAutoTable.finalY + 4
+      // Force new page - Detailed breakdown always starts on page 2
+      doc.addPage()
+
+      yPos = 10
 
       // Detailed breakdown header
       doc.setFillColor(50, 50, 50)
@@ -1104,7 +1116,7 @@ export default function Home() {
       doc.setTextColor(0, 0, 0)
       yPos += 7
 
-      // Two-column layout for detailed breakdown
+      // Two-column layout for detailed breakdown - starts on page 2
       let leftY = yPos
       let rightY = yPos
       let useLeftColumn = true
@@ -1179,6 +1191,8 @@ export default function Home() {
           foot: footData,
           startY: startY + 4,
           theme: "grid",
+          pageBreak: "avoid", // Don't break material groups across pages
+          rowPageBreak: "avoid",
           styles: {
             cellPadding: 1,
             fontSize: 6,
@@ -1579,17 +1593,27 @@ export default function Home() {
         </Card>
       ) : !hasViewedReports ? (
         // Saved Reports View - Show before customer name entry
-        <Card className="mb-8 max-w-4xl mx-auto">
-          <CardHeader className="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-t-lg">
-            <CardTitle className="flex justify-between items-center">
-              <span className="text-xl font-bold">Saved Reports - {selectedBranch && BRANCH_OPTIONS[selectedBranch]}</span>
-              <div className="flex gap-2">
+        <Card className="mb-8 max-w-5xl mx-auto overflow-hidden shadow-lg border-0">
+          <CardHeader className="bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 text-white px-6 py-5">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-lg">
+                  <FileText className="h-6 w-6" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl font-bold tracking-tight">Saved Invoices</CardTitle>
+                  <p className="text-slate-300 text-sm mt-0.5">{selectedBranch && BRANCH_OPTIONS[selectedBranch]}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 w-full sm:w-auto">
                 <Button 
                   variant="secondary" 
                   size="sm" 
                   onClick={() => selectedBranch && fetchSavedReportsForBranch(selectedBranch)} 
                   disabled={isLoadingReports}
+                  className="bg-white/10 hover:bg-white/20 text-white border-0"
                 >
+                  <RefreshCw className={cn("h-4 w-4 mr-1.5", isLoadingReports && "animate-spin")} />
                   {isLoadingReports ? "Loading..." : "Refresh"}
                 </Button>
                 <Button 
@@ -1600,83 +1624,102 @@ export default function Home() {
                     setSelectedBranch(null)
                     setSavedReports([])
                   }}
-                  className="text-white border-white hover:bg-white/20"
+                  className="bg-white/5 text-white border-white/30 hover:bg-white/15"
                 >
                   Change Branch
                 </Button>
               </div>
-            </CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             {isLoadingReports ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <span className="ml-3 text-muted-foreground">Loading reports...</span>
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="relative">
+                  <div className="h-12 w-12 rounded-full border-2 border-slate-200 border-t-slate-600 animate-spin"></div>
+                </div>
+                <span className="mt-4 text-slate-500 font-medium">Loading invoices...</span>
+                <p className="text-sm text-slate-400 mt-1">Please wait</p>
               </div>
             ) : savedReports.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="text-6xl mb-4">📋</div>
-                <p className="text-muted-foreground text-lg mb-2">No saved reports found</p>
-                <p className="text-sm text-muted-foreground mb-6">Create your first report to get started</p>
-                <Button onClick={handleCreateNewReport} size="lg" className="text-lg px-8 py-6">
+              <div className="text-center py-16 px-6">
+                <div className="inline-flex p-4 bg-slate-100 rounded-full mb-6">
+                  <FileText className="h-12 w-12 text-slate-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-800 mb-2">No saved invoices yet</h3>
+                <p className="text-slate-500 mb-8 max-w-sm mx-auto">Create your first invoice to get started. Your invoices will appear here for easy access.</p>
+                <Button onClick={handleCreateNewReport} size="lg" className="text-base px-8 py-6 h-auto font-medium shadow-md">
                   <PlusCircle className="mr-2 h-5 w-5" />
-                  Create New Report
+                  Create New Invoice
                 </Button>
               </div>
             ) : (
               <>
-                <div className="p-4 border-b bg-gray-50">
-                  <Button onClick={handleCreateNewReport} size="lg" className="w-full text-lg py-6">
-                    <PlusCircle className="mr-2 h-5 w-5" />
-                    Create New Report
-                  </Button>
+                <div className="p-5 bg-slate-50/80 border-b border-slate-200">
+                  <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-700">
+                        {savedReports.length} invoice{savedReports.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <Button onClick={handleCreateNewReport} size="lg" className="font-medium shadow-sm">
+                      <PlusCircle className="mr-2 h-5 w-5" />
+                      Create New Invoice
+                    </Button>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="bg-gray-100">
-                        <th className="px-4 py-3 text-left font-semibold text-sm">Report No</th>
-                        <th className="px-4 py-3 text-left font-semibold text-sm">Customer Name</th>
-                        <th className="px-4 py-3 text-left font-semibold text-sm">Date Created</th>
-                        <th className="px-4 py-3 text-right font-semibold text-sm">Total Qty</th>
-                        <th className="px-4 py-3 text-right font-semibold text-sm">Total Amount</th>
-                        <th className="px-4 py-3 text-center font-semibold text-sm">Actions</th>
+                      <tr className="bg-slate-800 text-white">
+                        <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><Hash className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Report No</th>
+                        <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><User className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Customer</th>
+                        <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><Calendar className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Date</th>
+                        <th className="px-5 py-3.5 text-right font-semibold text-sm tracking-wide">Qty</th>
+                        <th className="px-5 py-3.5 text-right font-semibold text-sm tracking-wide">Amount (SAR)</th>
+                        <th className="px-5 py-3.5 text-center font-semibold text-sm tracking-wide w-36">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {savedReports.map((report, index) => (
                         <tr 
                           key={report.rowIndex} 
-                          className={`border-b hover:bg-blue-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                          className={cn(
+                            "border-b border-slate-100 transition-all duration-150 hover:bg-slate-50",
+                            index % 2 === 0 ? "bg-white" : "bg-slate-50/50"
+                          )}
                         >
-                          <td className="px-4 py-3">
-                            <span className="font-mono font-bold text-blue-600">
+                          <td className="px-5 py-3.5">
+                            <span className="inline-flex items-center font-mono font-semibold text-slate-800 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-sm">
                               #{report.reportNumber}
                             </span>
                           </td>
-                          <td className="px-4 py-3 font-medium">{report.customerName}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{report.dateCreated}</td>
-                          <td className="px-4 py-3 text-right font-medium">{report.totalQuantity.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-right font-bold text-green-600">
-                            {report.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <td className="px-5 py-3.5">
+                            <span className="font-medium text-slate-800">{report.customerName}</span>
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex gap-2 justify-center">
+                          <td className="px-5 py-3.5 text-slate-600 text-sm">{report.dateCreated}</td>
+                          <td className="px-5 py-3.5 text-right font-medium text-slate-700 tabular-nums">{report.totalQuantity.toLocaleString()}</td>
+                          <td className="px-5 py-3.5 text-right font-semibold text-emerald-700 tabular-nums">
+                            ﷼ {report.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="flex gap-1.5 justify-center">
                               <Button 
                                 size="sm" 
                                 variant="outline"
                                 onClick={() => loadReport(report)}
-                                className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                                className="h-8 px-2.5 text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300"
+                                title="Edit invoice"
                               >
-                                <Pencil className="h-3 w-3 mr-1" />
-                                Edit
+                                <Pencil className="h-3.5 w-3.5" />
                               </Button>
                               <Button 
                                 size="sm" 
-                                variant="destructive"
+                                variant="outline"
                                 onClick={() => deleteReport(report.rowIndex)}
+                                className="h-8 px-2.5 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                                title="Delete invoice"
                               >
-                                <Trash2 className="h-3 w-3" />
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           </td>
@@ -1761,7 +1804,7 @@ export default function Home() {
                     variant="secondary" 
                     onClick={toggleSavedReports}
                   >
-                    {showSavedReports ? "Hide Saved Reports" : "View Saved Reports"}
+                    {showSavedReports ? "Hide Saved Invoices" : "View Saved Invoices"}
                   </Button>
                   <Button variant="outline" onClick={() => {
                     handleReset()
@@ -1780,69 +1823,85 @@ export default function Home() {
 
           {/* Saved Reports View */}
           {showSavedReports && (
-            <Card className="mb-8 print:hidden">
-              <CardHeader className="bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-t-lg">
-                <CardTitle className="flex justify-between items-center">
-                  <span className="text-xl font-bold">Saved Reports</span>
-                  <Button variant="secondary" size="sm" onClick={fetchSavedReports} disabled={isLoadingReports}>
+            <Card className="mb-8 print:hidden overflow-hidden shadow-lg border-slate-200">
+              <CardHeader className="bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 text-white px-6 py-5">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/10 rounded-lg">
+                      <FileText className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-xl font-bold tracking-tight">Saved Invoices</CardTitle>
+                      <p className="text-slate-300 text-sm mt-0.5">Select an invoice to edit, export, or print</p>
+                    </div>
+                  </div>
+                  <Button variant="secondary" size="sm" onClick={fetchSavedReports} disabled={isLoadingReports} className="bg-white/10 hover:bg-white/20 text-white border-0">
+                    <RefreshCw className={cn("h-4 w-4 mr-1.5", isLoadingReports && "animate-spin")} />
                     {isLoadingReports ? "Loading..." : "Refresh"}
                   </Button>
-                </CardTitle>
+                </div>
               </CardHeader>
               <CardContent className="p-0">
                 {isLoadingReports ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    <span className="ml-3 text-muted-foreground">Loading reports...</span>
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <div className="h-12 w-12 rounded-full border-2 border-slate-200 border-t-slate-600 animate-spin"></div>
+                    <span className="mt-4 text-slate-500 font-medium">Loading invoices...</span>
                   </div>
                 ) : savedReports.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="text-4xl mb-4">📋</div>
-                    <p className="text-muted-foreground text-lg">No saved reports found</p>
-                    <p className="text-sm text-muted-foreground mt-2">Save your first report to see it here</p>
+                  <div className="text-center py-16 px-6">
+                    <div className="inline-flex p-4 bg-slate-100 rounded-full mb-4">
+                      <FileText className="h-10 w-10 text-slate-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-800 mb-2">No saved invoices</h3>
+                    <p className="text-slate-500 text-sm">Save your current report to see it here</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="bg-gray-100">
-                          <th className="px-4 py-3 text-left font-semibold text-sm">Report No</th>
-                          <th className="px-4 py-3 text-left font-semibold text-sm">Customer Name</th>
-                          <th className="px-4 py-3 text-left font-semibold text-sm">Date Created</th>
-                          <th className="px-4 py-3 text-right font-semibold text-sm">Total Qty</th>
-                          <th className="px-4 py-3 text-right font-semibold text-sm">Total Amount</th>
-                          <th className="px-4 py-3 text-center font-semibold text-sm">Actions</th>
+                        <tr className="bg-slate-800 text-white">
+                          <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><Hash className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Report No</th>
+                          <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><User className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Customer</th>
+                          <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><Calendar className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Date</th>
+                          <th className="px-5 py-3.5 text-right font-semibold text-sm tracking-wide">Qty</th>
+                          <th className="px-5 py-3.5 text-right font-semibold text-sm tracking-wide">Amount (SAR)</th>
+                          <th className="px-5 py-3.5 text-center font-semibold text-sm tracking-wide">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {savedReports.map((report, index) => (
                           <tr 
                             key={report.rowIndex} 
-                                                        className={`border-b hover:bg-blue-50 transition-colors ${
-                                                          selectedReport?.rowIndex === report.rowIndex ? 'bg-blue-100' : ''
-                                                        } ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                            className={cn(
+                              "border-b border-slate-100 transition-all duration-150",
+                              selectedReport?.rowIndex === report.rowIndex
+                                ? "bg-blue-50 border-l-4 border-l-blue-500"
+                                : cn("hover:bg-slate-50", index % 2 === 0 ? "bg-white" : "bg-slate-50/50")
+                            )}
                           >
-                            <td className="px-4 py-3">
-                              <span className="font-mono font-bold text-blue-600">
+                            <td className="px-5 py-3.5">
+                              <span className="inline-flex items-center font-mono font-semibold text-slate-800 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-sm">
                                 #{report.reportNumber}
                               </span>
                             </td>
-                            <td className="px-4 py-3 font-medium">{report.customerName}</td>
-                            <td className="px-4 py-3 text-muted-foreground">{report.dateCreated}</td>
-                            <td className="px-4 py-3 text-right font-medium">{report.totalQuantity.toLocaleString()}</td>
-                            <td className="px-4 py-3 text-right font-bold text-green-600">
-                              {report.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <td className="px-5 py-3.5">
+                              <span className="font-medium text-slate-800">{report.customerName}</span>
                             </td>
-                            <td className="px-4 py-3">
-                              <div className="flex gap-2 justify-center">
+                            <td className="px-5 py-3.5 text-slate-600 text-sm">{report.dateCreated}</td>
+                            <td className="px-5 py-3.5 text-right font-medium text-slate-700 tabular-nums">{report.totalQuantity.toLocaleString()}</td>
+                            <td className="px-5 py-3.5 text-right font-semibold text-emerald-700 tabular-nums">
+                              ﷼ {report.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <div className="flex flex-wrap gap-1.5 justify-center">
                                 <Button 
                                   size="sm" 
                                   variant="outline"
                                   onClick={() => loadReport(report)}
-                                  className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                                  className="h-8 px-2.5 text-blue-600 border-blue-200 hover:bg-blue-50"
+                                  title="Edit"
                                 >
-                                  <Pencil className="h-3 w-3 mr-1" />
-                                  Edit
+                                  <Pencil className="h-3.5 w-3.5" />
                                 </Button>
                                 <Button 
                                   size="sm" 
@@ -1851,9 +1910,10 @@ export default function Home() {
                                     loadReport(report)
                                     setTimeout(() => exportToPDF(), 500)
                                   }}
-                                  className="text-green-600 border-green-600 hover:bg-green-50"
+                                  className="h-8 px-2.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                                  title="Download PDF"
                                 >
-                                  PDF
+                                  <FileDown className="h-3.5 w-3.5" />
                                 </Button>
                                 <Button 
                                   size="sm" 
@@ -1862,16 +1922,19 @@ export default function Home() {
                                     loadReport(report)
                                     setTimeout(() => handlePrint(), 500)
                                   }}
-                                  className="text-purple-600 border-purple-600 hover:bg-purple-50"
+                                  className="h-8 px-2.5 text-violet-600 border-violet-200 hover:bg-violet-50"
+                                  title="Print"
                                 >
-                                  Print
+                                  <Printer className="h-3.5 w-3.5" />
                                 </Button>
                                 <Button 
                                   size="sm" 
-                                  variant="destructive"
+                                  variant="outline"
                                   onClick={() => deleteReport(report.rowIndex)}
+                                  className="h-8 px-2.5 text-red-600 border-red-200 hover:bg-red-50"
+                                  title="Delete"
                                 >
-                                  <Trash2 className="h-3 w-3" />
+                                  <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                               </div>
                             </td>
@@ -2033,9 +2096,9 @@ export default function Home() {
 
           {/* Printable Content - Materials Report */}
           {!showStockReport ? (
-            <div ref={contentRef} className="print:block">
+            <div ref={contentRef} className="print:block materials-print-view">
               {/* Report Header for Print/PDF */}
-              <div className="print:block hidden mb-8">
+              <div className="print:block hidden mb-8 materials-print-header">
                                 <h1 className="text-3xl font-bold text-center">{getCompanyName()}</h1>
                                 <p className="text-center text-muted-foreground">
                                   Generated on: {formatDate(new Date().toISOString().split("T")[0])}
@@ -2044,34 +2107,41 @@ export default function Home() {
               </div>
 
               {/* Materials Table */}
-              <Card className="mb-8">
-                <CardHeader className="print:py-2">
-                  <CardTitle>Materials List</CardTitle>
+              <Card className="mb-8 overflow-hidden shadow-md border-slate-200">
+                <CardHeader className="bg-gradient-to-r from-slate-800 to-slate-700 text-white py-4 px-6">
+                  <CardTitle className="text-lg font-bold">Materials List</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-0">
                   {materials.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-4">No materials added yet</p>
+                    <p className="text-center text-slate-500 py-12">No materials added yet</p>
                   ) : (
-                    <div className="overflow-x-auto rounded-lg border border-gray-200">
-                      <table className="w-full border-collapse">
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse materials-table materials-print-table">
                         <thead>
-                          <tr className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
-                            <th className="px-4 py-3 text-left font-semibold text-sm">Date</th>
-                            <th className="px-4 py-3 text-left font-semibold text-sm">Material Name</th>
-                            <th className="px-4 py-3 text-right font-semibold text-sm">Quantity</th>
-                            <th className="px-4 py-3 text-right font-semibold text-sm">Unit Price (﷼)</th>
-                            <th className="px-4 py-3 text-right font-semibold text-sm">Total Price (﷼)</th>
-                            <th className="px-4 py-3 text-center font-semibold text-sm print:hidden">Actions</th>
+                          <tr className="bg-slate-800 text-white">
+                            <th className="px-5 py-3.5 text-center font-semibold text-sm w-14">S.No</th>
+                            <th className="px-5 py-3.5 text-left font-semibold text-sm">Date</th>
+                            <th className="px-5 py-3.5 text-left font-semibold text-sm">Material Name</th>
+                            <th className="px-5 py-3.5 text-right font-semibold text-sm">Quantity</th>
+                            <th className="px-5 py-3.5 text-right font-semibold text-sm">Unit Price (﷼)</th>
+                            <th className="px-5 py-3.5 text-right font-semibold text-sm">Total Price (﷼)</th>
+                            <th className="px-5 py-3.5 text-center font-semibold text-sm print:hidden w-28">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {sortedDates.map((date, dateIndex) => (
                             <React.Fragment key={date}>
-                              {groupedMaterials[date].map((material, index) => (
-                                <tr key={material.id} className={`border-b border-gray-100 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50`}>
+                              {groupedMaterials[date].map((material, index) => {
+                                const serialNo = sortedDates.slice(0, dateIndex).reduce((sum, d) => sum + groupedMaterials[d].length, 0) + index + 1
+                                return (
+                                  <tr key={material.id} className={cn(
+                                  "border-b border-slate-100 transition-colors hover:bg-slate-50",
+                                  index % 2 === 0 ? "bg-white" : "bg-slate-50/50"
+                                )}>
                                   {editingId === material.id ? (
                                     <>
-                                      <td className="p-2">
+                                      <td className="px-5 py-3 text-center tabular-nums font-medium text-slate-600">{serialNo}</td>
+                                      <td className="px-5 py-3">
                                         <Input
                                           id="edit-date"
                                           type="date"
@@ -2081,7 +2151,7 @@ export default function Home() {
                                           required
                                         />
                                       </td>
-                                      <td className="p-2">
+                                      <td className="px-5 py-3">
                                         <div className="relative">
                                           <Input
                                             ref={editNameInputRef}
@@ -2120,7 +2190,7 @@ export default function Home() {
                                           )}
                                         </div>
                                       </td>
-                                      <td className="p-2">
+                                      <td className="px-5 py-3">
                                         <Input
                                           id="edit-quantity"
                                           type="number"
@@ -2133,7 +2203,7 @@ export default function Home() {
                                           required
                                         />
                                       </td>
-                                      <td className="p-2">
+                                      <td className="px-5 py-3">
                                         <Input
                                           id="edit-unitPrice"
                                           type="number"
@@ -2146,10 +2216,10 @@ export default function Home() {
                                           required
                                         />
                                       </td>
-                                      <td className="p-2 text-right">
+                                      <td className="px-5 py-3 text-right tabular-nums">
                                         {(Number(editQuantity) * Number(editUnitPrice)).toFixed(2)}
                                       </td>
-                                      <td className="p-2 text-right print:hidden">
+                                      <td className="px-5 py-3 text-right print:hidden">
                                         <div className="flex justify-end gap-1">
                                           <Button variant="ghost" size="sm" onClick={saveEdit} className="h-8 w-8 p-0">
                                             <span className="sr-only">Save</span>
@@ -2169,18 +2239,19 @@ export default function Home() {
                                     </>
                                   ) : (
                                     <>
+                                      <td className="px-5 py-3 text-center tabular-nums font-medium text-slate-600">{serialNo}</td>
                                       {index === 0 ? (
-                                        <td className="p-2 font-medium">{formatDate(material.date)}</td>
+                                        <td className="px-5 py-3 font-medium text-slate-800">{formatDate(material.date)}</td>
                                       ) : (
-                                        <td className="p-2 font-medium">{formatDate(material.date)}</td>
+                                        <td className="px-5 py-3 font-medium text-slate-800">{formatDate(material.date)}</td>
                                       )}
-                                      <td className="p-2">{material.name}</td>
-                                      <td className="p-2 text-right">{material.quantity.toFixed(2)}</td>
-                                      <td className="p-2 text-right">{material.unitPrice.toFixed(2)}</td>
-                                      <td className="p-2 text-right">
+                                      <td className="px-5 py-3 text-slate-800">{material.name}</td>
+                                      <td className="px-5 py-3 text-right tabular-nums">{material.quantity.toFixed(2)}</td>
+                                      <td className="px-5 py-3 text-right tabular-nums">{material.unitPrice.toFixed(2)}</td>
+                                      <td className="px-5 py-3 text-right font-medium tabular-nums text-slate-800">
                                         {(material.quantity * material.unitPrice).toFixed(2)}
                                       </td>
-                                      <td className="p-2 text-right print:hidden">
+                                      <td className="px-5 py-3 text-right print:hidden">
                                         <div className="flex justify-end gap-1">
                                           <Button
                                             variant="ghost"
@@ -2219,32 +2290,33 @@ export default function Home() {
                                     </>
                                   )}
                                 </tr>
-                              ))}
+                                )
+                              })}
                               {/* Subtotal for date group */}
-                                                            <tr className="bg-gradient-to-r from-blue-50 to-blue-100 border-t-2 border-blue-200">
-                                                              <td colSpan={4} className="px-4 py-2 text-right font-semibold text-blue-800">
-                                                                Subtotal for {formatDate(date)}:
-                                                              </td>
-                                                              <td className="px-4 py-2 text-right font-semibold text-blue-800">
+                              <tr className="subtotal-row bg-slate-100 border-t-2 border-slate-200">
+                                <td colSpan={5} className="px-5 py-3 text-right font-semibold text-slate-800 text-sm">
+                                  Subtotal for {formatDate(date)}:
+                                </td>
+                                <td className="px-5 py-3 text-right font-semibold text-slate-800 text-sm tabular-nums">
                                   ﷼ {subtotalsByDate[dateIndex].subtotal.toFixed(2)}
                                 </td>
                                 <td className="print:hidden"></td>
                               </tr>
                               {/* Gap after each date group */}
-                              <tr className="h-2 bg-gray-100">
-                                <td colSpan={6}></td>
+                              <tr className="h-1 bg-slate-50">
+                                <td colSpan={7}></td>
                               </tr>
                             </React.Fragment>
                           ))}
                         </tbody>
                         <tfoot>
-                          <tr className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
-                            <td colSpan={2} className="px-4 py-3 text-right font-bold text-sm">
+                          <tr className="bg-slate-800 text-white">
+                            <td colSpan={3} className="px-5 py-4 text-right font-bold text-base">
                               GRAND TOTAL:
                             </td>
-                            <td className="px-4 py-3 text-right font-bold text-sm">{grandTotalQuantity.toFixed(2)}</td>
-                            <td className="px-4 py-3 text-right font-bold text-sm"></td>
-                            <td className="px-4 py-3 text-right font-bold text-sm">﷼ {grandTotal.toFixed(2)}</td>
+                            <td className="px-5 py-4 text-right font-bold text-base tabular-nums">{grandTotalQuantity.toFixed(2)}</td>
+                            <td className="px-5 py-4 text-right font-bold text-base"></td>
+                            <td className="px-5 py-4 text-right font-bold text-base tabular-nums">﷼ {grandTotal.toFixed(2)}</td>
                             <td className="print:hidden"></td>
                           </tr>
                         </tfoot>
@@ -2256,52 +2328,53 @@ export default function Home() {
             </div>
           ) : (
             // Stock Report View for Printing
-            <div ref={stockReportRef} className="print:block">
-              {/* Report Header for Print */}
-              <div className="mb-8">
-                                <h1 className="text-3xl font-bold text-center">{getCompanyName()}</h1>
-                                <h2 className="text-xl text-center">Stock Report</h2>
-                <p className="text-center text-muted-foreground">
-                  Generated on: {formatDate(new Date().toISOString().split("T")[0])}
-                </p>
-                <p className="text-center font-medium mt-2">Customer: {customerName}</p>
-              </div>
+            <div ref={stockReportRef} className="print:block stock-report-print">
+              {/* Page 1: Report Header + Summary */}
+              <div className="stock-report-page-1">
+                <div className="mb-8">
+                  <h1 className="text-3xl font-bold text-center">{getCompanyName()}</h1>
+                  <h2 className="text-xl text-center">Stock Report</h2>
+                  <p className="text-center text-muted-foreground">
+                    Generated on: {formatDate(new Date().toISOString().split("T")[0])}
+                  </p>
+                  <p className="text-center font-medium mt-2">Customer: {customerName}</p>
+                </div>
 
-              {/* Stock Summary Table */}
-              <Card className="mb-8">
-                <CardHeader>
-                  <CardTitle>Summary</CardTitle>
+                {/* Stock Summary Table - Page 1 only, larger font */}
+                <Card className="mb-8 stock-summary-section overflow-hidden shadow-md border-slate-200">
+                <CardHeader className="bg-slate-700 text-white py-4 px-6">
+                  <CardTitle className="text-xl font-bold">Summary</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-0">
                   {materials.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-4">No materials added yet</p>
+                    <p className="text-center text-slate-500 py-8">No materials added yet</p>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="w-full border-collapse stock-report-table">
+                      <table className="w-full border-collapse stock-summary-table">
                         <thead>
-                          <tr>
-                            <th>Material Name</th>
-                            <th>Total Quantity</th>
-                            <th>Average Price (﷼)</th>
-                            <th>Total Amount (﷼)</th>
+                          <tr className="bg-slate-800 text-white">
+                            <th className="px-6 py-4 text-left font-semibold text-base">Material Name</th>
+                            <th className="px-6 py-4 text-right font-semibold text-base">Total Quantity</th>
+                            <th className="px-6 py-4 text-right font-semibold text-base">Average Price (﷼)</th>
+                            <th className="px-6 py-4 text-right font-semibold text-base">Total Amount (﷼)</th>
                           </tr>
                         </thead>
                         <tbody>
                           {getMaterialGroups().map((group) => (
-                            <tr key={group.name}>
-                              <td>{group.name}</td>
-                              <td className="text-right">{group.totalQuantity.toFixed(2)}</td>
-                              <td className="text-right">{group.averagePrice.toFixed(2)}</td>
-                              <td className="text-right">{group.totalAmount.toFixed(2)}</td>
+                            <tr key={group.name} className="border-b border-slate-200 hover:bg-slate-50">
+                              <td className="px-6 py-4 text-base font-medium text-slate-800">{group.name}</td>
+                              <td className="px-6 py-4 text-right text-base tabular-nums">{group.totalQuantity.toFixed(2)}</td>
+                              <td className="px-6 py-4 text-right text-base tabular-nums">{group.averagePrice.toFixed(2)}</td>
+                              <td className="px-6 py-4 text-right text-base font-semibold tabular-nums text-slate-800">{group.totalAmount.toFixed(2)}</td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot>
-                          <tr className="grand-total">
-                            <td>Grand Total</td>
-                            <td className="text-right">{getStockGrandTotals().totalQuantity.toFixed(2)}</td>
-                            <td></td>
-                            <td className="text-right">{getStockGrandTotals().totalAmount.toFixed(2)}</td>
+                          <tr className="grand-total bg-slate-800 text-white">
+                            <td className="px-6 py-4 text-lg font-bold">Grand Total</td>
+                            <td className="px-6 py-4 text-right text-lg font-bold tabular-nums">{getStockGrandTotals().totalQuantity.toFixed(2)}</td>
+                            <td className="px-6 py-4"></td>
+                            <td className="px-6 py-4 text-right text-lg font-bold tabular-nums">{getStockGrandTotals().totalAmount.toFixed(2)}</td>
                           </tr>
                         </tfoot>
                       </table>
@@ -2309,8 +2382,10 @@ export default function Home() {
                   )}
                 </CardContent>
               </Card>
+              </div>
 
-              {/* Detailed Breakdown */}
+              {/* Page 2+: Detailed Breakdown */}
+              <div className="stock-report-page-2">
               <Card className="mb-8">
                 <CardHeader>
                   <CardTitle>Detailed Breakdown</CardTitle>
@@ -2322,8 +2397,8 @@ export default function Home() {
                     <div className="detailed-breakdown-grid">
                       {getMaterialGroups().map((group) => (
                         <div key={group.name} className="material-group">
-                          <h3 className="text-lg font-bold mb-1">{group.name}</h3>
-                          <table className="w-full border-collapse stock-report-table">
+                          <h3 className="text-base font-bold mb-2 print:text-sm">{group.name}</h3>
+                          <table className="w-full border-collapse stock-report-table breakdown-table">
                             <thead>
                               <tr>
                                 <th>Date</th>
@@ -2357,6 +2432,7 @@ export default function Home() {
                   )}
                 </CardContent>
               </Card>
+              </div>
             </div>
           )}
         </>
