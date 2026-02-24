@@ -265,18 +265,18 @@
 
   .materials-print-view .materials-print-table thead tr,
   .materials-print-table thead tr {
-    background: #52525b !important;
+    background: #ffffff !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
   .materials-print-view .materials-print-table thead th,
   .materials-print-table thead th {
-    color: white !important;
+    color: #0f172a !important;
     font-weight: 700 !important;
     font-size: 11px !important;
     padding: 10px 12px !important;
-    border: 1px solid #334155 !important;
+    border: 1px solid #cbd5e1 !important;
     text-align: left !important;
   }
 

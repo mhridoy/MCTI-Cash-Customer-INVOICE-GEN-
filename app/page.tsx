@@ -959,8 +959,8 @@ export default function Home() {
           valign: "middle",
         },
         headStyles: {
-          fillColor: [82, 82, 91],
-          textColor: [255, 255, 255],
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
           fontStyle: "bold",
           halign: "center",
           fontSize: headerFontSize,
@@ -2224,7 +2224,7 @@ export default function Home() {
 
               {/* Materials Table */}
               <Card className="mb-8 overflow-hidden shadow-md border-slate-200">
-                <CardHeader className="bg-gradient-to-r from-slate-800 to-slate-700 text-white py-4 px-6">
+                <CardHeader className="bg-white text-slate-900 py-4 px-6 border-b border-slate-200">
                   <CardTitle className="text-lg font-bold">Materials List</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -2234,7 +2234,7 @@ export default function Home() {
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse materials-table materials-print-table">
                         <thead>
-                          <tr className="bg-zinc-700 text-white">
+                          <tr className="bg-white text-slate-900 border-b border-slate-200">
                             <th className="px-5 py-3.5 text-center font-semibold text-sm w-14">S.No</th>
                             <th className="px-5 py-3.5 text-left font-semibold text-sm">Date</th>
                             <th className="px-5 py-3.5 text-left font-semibold text-sm">Material Name</th>
