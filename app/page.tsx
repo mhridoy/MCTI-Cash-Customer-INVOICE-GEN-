@@ -872,14 +872,14 @@ export default function Home() {
       }
 
       // Draw header border/frame
-      doc.setDrawColor(0, 51, 102)
+      doc.setDrawColor(82, 82, 91)
       doc.setLineWidth(0.5)
       doc.rect(margin - 5, 8, pageWidth - 2 * (margin - 5), 45)
 
       // Company name - bold and centered
       doc.setFontSize(18)
       doc.setFont("helvetica", "bold")
-      doc.setTextColor(0, 51, 102)
+      doc.setTextColor(82, 82, 91)
       doc.text(getCompanyName(), pageWidth / 2, 18, { align: "center" })
 
       // Subtitle
@@ -889,7 +889,7 @@ export default function Home() {
       doc.text("MATERIALS DELIVERY NOTE", pageWidth / 2, 26, { align: "center" })
 
       // Horizontal line under title
-      doc.setDrawColor(0, 51, 102)
+      doc.setDrawColor(82, 82, 91)
       doc.setLineWidth(0.3)
       doc.line(margin, 30, pageWidth - margin, 30)
 
@@ -959,7 +959,7 @@ export default function Home() {
           valign: "middle",
         },
         headStyles: {
-          fillColor: [0, 51, 102],
+          fillColor: [82, 82, 91],
           textColor: [255, 255, 255],
           fontStyle: "bold",
           halign: "center",
@@ -969,7 +969,7 @@ export default function Home() {
           textColor: [50, 50, 50],
         },
         footStyles: {
-          fillColor: [0, 51, 102],
+          fillColor: [63, 63, 70],
           textColor: [255, 255, 255],
           fontStyle: "bold",
           fontSize: headerFontSize,
@@ -1048,7 +1048,7 @@ export default function Home() {
       // Summary table - full width
       doc.setFontSize(9)
       doc.setFont("helvetica", "bold")
-      doc.setFillColor(50, 50, 50)
+      doc.setFillColor(82, 82, 91)
       doc.rect(margin, yPos, tableWidth, 5, "F")
       doc.setTextColor(255, 255, 255)
       doc.text("SUMMARY", pageWidth / 2, yPos + 3.5, { align: "center" })
@@ -1097,7 +1097,7 @@ export default function Home() {
           fontSize: summaryFontSize,
         },
         footStyles: {
-          fillColor: [50, 50, 50],
+          fillColor: [63, 63, 70],
           textColor: [255, 255, 255],
           fontStyle: "bold",
           cellPadding: summaryCellPadding,
@@ -1121,7 +1121,7 @@ export default function Home() {
       yPos = 10
 
       // Detailed breakdown header
-      doc.setFillColor(50, 50, 50)
+      doc.setFillColor(82, 82, 91)
       doc.rect(margin, yPos, tableWidth, 5, "F")
       doc.setTextColor(255, 255, 255)
       doc.text("DETAILED BREAKDOWN", pageWidth / 2, yPos + 3.5, { align: "center" })
@@ -1174,7 +1174,7 @@ export default function Home() {
         // Material name header with serial number
         doc.setFontSize(7)
         doc.setFont("helvetica", "bold")
-        doc.setFillColor(100, 100, 100)
+        doc.setFillColor(82, 82, 91)
         doc.rect(startX, startY, colWidth, 4, "F")
         doc.setTextColor(255, 255, 255)
         doc.text(`${groupIndex + 1}. ${group.name}`, startX + 2, startY + 2.8)
@@ -1682,7 +1682,7 @@ export default function Home() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="bg-slate-800 text-white">
+                      <tr className="bg-zinc-700 text-white">
                         <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><Hash className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Report No</th>
                         <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><User className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Customer</th>
                         <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><Calendar className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Date</th>
@@ -1871,7 +1871,7 @@ export default function Home() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="bg-slate-800 text-white">
+                        <tr className="bg-zinc-700 text-white">
                           <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><Hash className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Report No</th>
                           <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><User className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Customer</th>
                           <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><Calendar className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Date</th>
@@ -2107,7 +2107,7 @@ export default function Home() {
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse">
                     <thead>
-                      <tr className="bg-slate-700 text-white">
+                      <tr className="bg-zinc-700 text-white">
                         <th className="px-5 py-3.5 text-left font-semibold text-sm">Material Name</th>
                         <th className="px-5 py-3.5 text-center font-semibold text-sm">Count</th>
                         <th className="px-5 py-3.5 text-right font-semibold text-sm">Total Quantity</th>
@@ -2163,7 +2163,7 @@ export default function Home() {
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="bg-slate-800 text-white">
+                      <tr className="bg-zinc-700 text-white">
                         <td className="px-5 py-4 font-bold" colSpan={2}>
                           Grand Total
                         </td>
@@ -2234,7 +2234,7 @@ export default function Home() {
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse materials-table materials-print-table">
                         <thead>
-                          <tr className="bg-slate-800 text-white">
+                          <tr className="bg-zinc-700 text-white">
                             <th className="px-5 py-3.5 text-center font-semibold text-sm w-14">S.No</th>
                             <th className="px-5 py-3.5 text-left font-semibold text-sm">Date</th>
                             <th className="px-5 py-3.5 text-left font-semibold text-sm">Material Name</th>
@@ -2426,7 +2426,7 @@ export default function Home() {
                           ))}
                         </tbody>
                         <tfoot>
-                          <tr className="bg-slate-800 text-white">
+                          <tr className="bg-zinc-700 text-white">
                             <td colSpan={3} className="px-5 py-4 text-right font-bold text-base">
                               GRAND TOTAL:
                             </td>
@@ -2458,7 +2458,7 @@ export default function Home() {
 
                 {/* Stock Summary Table - Page 1 only, larger font */}
                 <Card className="mb-8 stock-summary-section overflow-hidden shadow-md border-slate-200">
-                <CardHeader className="bg-slate-700 text-white py-4 px-6">
+                <CardHeader className="bg-zinc-700 text-white py-4 px-6">
                   <CardTitle className="text-xl font-bold">Summary</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -2468,7 +2468,7 @@ export default function Home() {
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse stock-summary-table">
                         <thead>
-                          <tr className="bg-slate-800 text-white">
+                          <tr className="bg-zinc-700 text-white">
                             <th className="px-6 py-4 text-left font-semibold text-base">Material Name</th>
                             <th className="px-6 py-4 text-right font-semibold text-base">Total Quantity</th>
                             <th className="px-6 py-4 text-right font-semibold text-base">Average Price (﷼)</th>
@@ -2486,7 +2486,7 @@ export default function Home() {
                           ))}
                         </tbody>
                         <tfoot>
-                          <tr className="grand-total bg-slate-800 text-white">
+                          <tr className="grand-total bg-zinc-700 text-white">
                             <td className="px-6 py-4 text-lg font-bold">Grand Total</td>
                             <td className="px-6 py-4 text-right text-lg font-bold tabular-nums">{getStockGrandTotals().totalQuantity.toFixed(2)}</td>
                             <td className="px-6 py-4"></td>

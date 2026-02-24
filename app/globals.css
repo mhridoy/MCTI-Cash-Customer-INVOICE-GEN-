@@ -153,7 +153,7 @@
     font-size: 9px !important;
     margin: 4px 0 2px 0 !important;
     font-weight: bold;
-    background-color: #333 !important;
+    background-color: #52525b !important;
     color: white !important;
     padding: 2px 4px !important;
   }
@@ -265,7 +265,7 @@
 
   .materials-print-view .materials-print-table thead tr,
   .materials-print-table thead tr {
-    background: #1e293b !important;
+    background: #52525b !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -350,7 +350,7 @@
 
   .materials-print-view .materials-print-table tfoot tr,
   .materials-print-table tfoot tr {
-    background: #1e293b !important;
+    background: #3f3f46 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -390,7 +390,7 @@
 
   /* Grand total row styling */
   tfoot tr.grand-total {
-    background-color: #333 !important;
+    background-color: #3f3f46 !important;
     color: white !important;
     font-weight: bold;
   }
@@ -525,7 +525,7 @@
 
   /* Professional table for print - excludes materials (has its own rules) */
   .print\\:block:not(.materials-print-view) table thead tr {
-    background: #003366 !important;
+    background: #52525b !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -535,7 +535,7 @@
     font-weight: bold !important;
     padding: 8px 10px !important;
     font-size: 10px !important;
-    border: 1px solid #003366 !important;
+    border: 1px solid #52525b !important;
   }
 
   .print\\:block:not(.materials-print-view) table tbody tr:nth-child(odd) {
@@ -567,7 +567,7 @@
 
   /* Grand total - stock report only */
   .print\\:block:not(.materials-print-view) table tfoot tr {
-    background: #003366 !important;
+    background: #3f3f46 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -577,10 +577,10 @@
     font-weight: bold !important;
     padding: 10px !important;
     font-size: 11px !important;
-    border: 1px solid #003366 !important;
+    border: 1px solid #3f3f46 !important;
   }
 
-  /* Gap rows - stock report only */
+  /* Gap rows- stock report only */
   .print\\:block:not(.materials-print-view) table tbody tr[class*="h-1"],
   .print\\:block:not(.materials-print-view) table tbody tr[class*="h-2"] {
     height: 4px !important;
@@ -703,7 +703,7 @@
 }
 
 .stock-summary-table th {
-  background-color: #1e293b;
+  background-color: #52525b;
   color: white;
   font-weight: 600;
 }
@@ -713,7 +713,7 @@
 }
 
 .stock-summary-table tfoot tr.grand-total {
-  background-color: #1e293b;
+  background-color: #3f3f46;
   color: white;
   font-weight: 700;
 }
