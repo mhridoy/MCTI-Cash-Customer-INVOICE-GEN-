@@ -138,30 +138,36 @@
 
   /* Compact header for print */
   .print\\:block h1 {
-    font-size: 14px !important;
+    font-size: 18px !important;
     margin: 0 0 2px 0 !important;
     text-align: center;
+    color: #000 !important;
+    font-weight: 700 !important;
   }
 
   .print\\:block h2 {
-    font-size: 11px !important;
+    font-size: 14px !important;
     margin: 0 0 2px 0 !important;
     text-align: center;
+    color: #000 !important;
+    font-weight: 700 !important;
   }
 
   .print\\:block h3 {
-    font-size: 9px !important;
+    font-size: 14px !important;
     margin: 4px 0 2px 0 !important;
-    font-weight: bold;
-    background-color: #52525b !important;
-    color: white !important;
+    font-weight: 700 !important;
+    background-color: transparent !important;
+    color: #000 !important;
     padding: 2px 4px !important;
   }
 
   .print\\:block p {
-    font-size: 9px !important;
-    margin: 1px 0 !important;
+    font-size: 12px !important;
+    margin: 4px 0 !important;
     text-align: center;
+    color: #000 !important;
+    font-weight: 600 !important;
   }
 
   /* Full-width professional tables - stock report */
@@ -175,40 +181,40 @@
   /* Detailed breakdown - larger readable font */
   .stock-report-page-2 table,
   .stock-report-page-2 .stock-report-table {
-    font-size: 11px !important;
+    font-size: 13px !important;
   }
 
   .stock-report-page-2 th,
   .stock-report-page-2 td {
-    padding: 8px 10px !important;
-    font-size: 11px !important;
+    padding: 10px 12px !important;
+    font-size: 13px !important;
     border: 2px solid #334155 !important;
   }
 
   .stock-report-page-2 .material-group h3 {
-    font-size: 12px !important;
+    font-size: 14px !important;
     padding: 8px 10px !important;
     margin: 0 0 6px 0 !important;
     background-color: transparent !important;
-    color: #0f172a !important;
+    color: #000 !important;
     font-weight: bold !important;
     border: 2px solid #334155 !important;
     border-radius: 4px !important;
   }
 
   .stock-report-page-2 tfoot tr.group-total td {
-    font-size: 11px !important;
-    padding: 6px 8px !important;
+    font-size: 13px !important;
+    padding: 10px 12px !important;
   }
 
-  /* Summary table on page 1 - keep reasonable size */
+  /* Summary table on page 1 - larger font */
   .stock-report-page-1 table {
-    font-size: 10px !important;
+    font-size: 12px !important;
   }
 
   .stock-report-page-1 th,
   .stock-report-page-1 td {
-    padding: 4px 6px !important;
+    padding: 10px 12px !important;
   }
 
   /* Fallback for other stock report tables */
@@ -224,16 +230,17 @@
   }
 
   .materials-print-view h1 {
-    font-size: 18px !important;
+    font-size: 20px !important;
     font-weight: bold !important;
     margin-bottom: 4px !important;
-    color: #1e293b !important;
+    color: #000 !important;
   }
 
   .materials-print-view p {
-    font-size: 11px !important;
-    color: #475569 !important;
+    font-size: 14px !important;
+    color: #000 !important;
     margin: 2px 0 !important;
+    font-weight: 600 !important;
   }
 
   .materials-print-view [class*="CardHeader"] {
@@ -245,7 +252,7 @@
   .materials-print-view [class*="CardTitle"] {
     font-size: 14px !important;
     font-weight: 700 !important;
-    color: #1e293b !important;
+    color: #000 !important;
     margin: 0 !important;
   }
 
@@ -265,18 +272,21 @@
 
   .materials-print-view .materials-print-table thead tr,
   .materials-print-table thead tr {
-    background: #ffffff !important;
+    background: transparent !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    border-bottom: 2px solid #334155 !important;
   }
 
   .materials-print-view .materials-print-table thead th,
   .materials-print-table thead th {
-    color: #0f172a !important;
+    color: #000 !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
     font-weight: 700 !important;
     font-size: 11px !important;
     padding: 10px 12px !important;
-    border: 1px solid #cbd5e1 !important;
+    border: 1px solid #334155 !important;
     text-align: left !important;
   }
 
@@ -298,11 +308,11 @@
 
   .materials-print-view .materials-print-table tbody td,
   .materials-print-table tbody td {
-    font-size: 11px !important;
+    font-size: 12px !important;
     padding: 8px 12px !important;
     border: 1px solid #cbd5e1 !important;
     text-align: left !important;
-    color: #334155 !important;
+    color: #000 !important;
   }
 
   .materials-print-view .materials-print-table tbody tr:not(.subtotal-row):not([class*="h-1"]):not([class*="h-2"]) td:first-child,
@@ -322,20 +332,21 @@
 
   .materials-print-view .materials-print-table tbody tr:nth-child(even),
   .materials-print-table tbody tr:nth-child(even) {
-    background: #f8fafc !important;
+    background: #ffffff !important;
   }
 
   .materials-print-view .materials-print-table tbody tr.subtotal-row,
   .materials-print-table tbody tr.subtotal-row {
-    background: #e2e8f0 !important;
+    background: #ffffff !important;
     font-weight: 600 !important;
   }
 
   .materials-print-view .materials-print-table tbody tr.subtotal-row td,
   .materials-print-table tbody tr.subtotal-row td {
     border-top: 2px solid #334155 !important;
-    font-size: 11px !important;
-    color: #1e293b !important;
+    font-size: 12px !important;
+    color: #000 !important;
+    font-weight: 600 !important;
   }
 
   .materials-print-view .materials-print-table tbody tr[class*="h-1"] td,
@@ -344,20 +355,21 @@
   .materials-print-table tbody tr[class*="h-2"] td {
     padding: 2px !important;
     border: none !important;
-    background: #f1f5f9 !important;
+    background: transparent !important;
     height: 4px !important;
   }
 
   .materials-print-view .materials-print-table tfoot tr,
   .materials-print-table tfoot tr {
-    background: #3f3f46 !important;
+    background: transparent !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    border-top: 2px solid #334155 !important;
   }
 
   .materials-print-view .materials-print-table tfoot td,
   .materials-print-table tfoot td {
-    color: white !important;
+    color: #000 !important;
     font-weight: 700 !important;
     font-size: 12px !important;
     padding: 12px !important;
@@ -390,15 +402,16 @@
 
   /* Grand total row styling */
   tfoot tr.grand-total {
-    background-color: #3f3f46 !important;
-    color: white !important;
-    font-weight: bold;
+    background-color: transparent !important;
+    color: #000 !important;
+    font-weight: 700 !important;
+    border-top: 2px solid #334155 !important;
   }
 
   tfoot tr.grand-total td {
-    font-size: 9px !important;
-    padding: 3px 4px !important;
-    color: white !important;
+    font-size: 13px !important;
+    padding: 6px 8px !important;
+    color: #000 !important;
   }
 
   /* Subtotal row styling - no bg, bold text */
@@ -410,7 +423,7 @@
   .stock-report-print tfoot tr.group-total td {
     font-size: 11px !important;
     padding: 6px 8px !important;
-    color: #0f172a !important;
+    color: #000 !important;
     font-weight: bold !important;
   }
 
@@ -443,8 +456,8 @@
 
   .breakdown-table th,
   .breakdown-table td {
-    font-size: 11px !important;
-    padding: 8px 10px !important;
+    font-size: 13px !important;
+    padding: 10px 12px !important;
     border: 2px solid #334155 !important;
   }
 
@@ -453,7 +466,7 @@
   }
 
   .breakdown-table thead th {
-    color: #0f172a !important;
+    color: #000 !important;
     font-weight: bold !important;
     border-color: #334155 !important;
   }
@@ -467,7 +480,7 @@
   }
 
   .breakdown-table tbody td {
-    color: #1e293b !important;
+    color: #000 !important;
     border-color: #334155 !important;
   }
 
@@ -478,7 +491,7 @@
   }
 
   .breakdown-table tfoot tr.group-total td {
-    color: #0f172a !important;
+    color: #000 !important;
     font-weight: bold !important;
     border-color: #334155 !important;
   }
@@ -511,7 +524,7 @@
     font-size: 12px !important;
     font-weight: bold;
     margin: 0 !important;
-    color: #0f172a !important;
+    color: #000 !important;
   }
 
   .stock-report-print [class*="CardContent"] {
@@ -525,17 +538,20 @@
 
   /* Professional table for print - excludes materials (has its own rules) */
   .print\\:block:not(.materials-print-view) table thead tr {
-    background: #52525b !important;
+    background: transparent !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    border-bottom: 2px solid #334155 !important;
   }
 
   .print\\:block:not(.materials-print-view) table thead th {
-    color: white !important;
+    color: #000 !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
     font-weight: bold !important;
     padding: 8px 10px !important;
     font-size: 10px !important;
-    border: 1px solid #52525b !important;
+    border: 1px solid #003366 !important;
   }
 
   .print\\:block:not(.materials-print-view) table tbody tr:nth-child(odd) {
@@ -543,7 +559,7 @@
   }
 
   .print\\:block:not(.materials-print-view) table tbody tr:nth-child(even) {
-    background-color: #f5f7fa !important;
+    background-color: #ffffff !important;
   }
 
   .print\\:block:not(.materials-print-view) table tbody td {
@@ -554,37 +570,38 @@
 
   /* Subtotal row - stock report only */
   .print\\:block:not(.materials-print-view) table tbody tr.subtotal-row {
-    background: #e2e8f0 !important;
+    background: #ffffff !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
   .print\\:block:not(.materials-print-view) table tbody tr.subtotal-row td {
-    color: #1e293b !important;
+    color: #000 !important;
     font-weight: bold !important;
     border-top: 2px solid #1e293b !important;
   }
 
   /* Grand total - stock report only */
   .print\\:block:not(.materials-print-view) table tfoot tr {
-    background: #3f3f46 !important;
+    background: transparent !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    border-top: 2px solid #334155 !important;
   }
 
   .print\\:block:not(.materials-print-view) table tfoot td {
-    color: white !important;
+    color: #000 !important;
     font-weight: bold !important;
     padding: 10px !important;
     font-size: 11px !important;
-    border: 1px solid #3f3f46 !important;
+    border: 1px solid #003366 !important;
   }
 
-  /* Gap rows- stock report only */
+  /* Gap rows - stock report only */
   .print\\:block:not(.materials-print-view) table tbody tr[class*="h-1"],
   .print\\:block:not(.materials-print-view) table tbody tr[class*="h-2"] {
     height: 4px !important;
-    background-color: #e0e0e0 !important;
+    background-color: transparent !important;
   }
 
   .print\\:block:not(.materials-print-view) table tbody tr[class*="h-1"] td,
@@ -593,17 +610,29 @@
     border: none !important;
   }
 
-  /* Stock summary - larger font, thick borders for print */
-  .stock-summary-table th,
-  .stock-summary-table td {
-    font-size: 11px !important;
-    padding: 8px 12px !important;
+  /* Stock summary - larger font, thick borders for print, no dark bg */
+  .stock-summary-table th {
+    font-size: 13px !important;
+    padding: 10px 14px !important;
     border-width: 2px !important;
     border-color: #334155 !important;
+    background: transparent !important;
+    color: #000 !important;
+    font-weight: 700 !important;
+  }
+
+  .stock-summary-table td {
+    font-size: 13px !important;
+    padding: 10px 14px !important;
+    border-width: 2px !important;
+    border-color: #334155 !important;
+    background: transparent !important;
+    color: #000 !important;
+    font-weight: 500 !important;
   }
 
   .stock-summary-table tfoot tr.grand-total td {
-    font-size: 12px !important;
+    font-size: 13px !important;
   }
 }
 
@@ -660,8 +689,9 @@
 
 .stock-report-table th {
   background-color: transparent;
-  color: #0f172a;
-  font-weight: bold;
+  color: #000;
+  font-weight: 700;
+  font-size: 1rem;
   border-color: #334155;
 }
 
@@ -674,7 +704,7 @@
 }
 
 .stock-report-table tbody td {
-  color: #1e293b;
+  color: #000;
 }
 
 .stock-report-table tfoot tr.group-total {
@@ -684,8 +714,8 @@
 }
 
 .stock-report-table tfoot tr.group-total td {
-  color: #0f172a;
-  font-weight: bold;
+  color: #000;
+  font-weight: 700;
   border-color: #334155;
 }
 
@@ -703,19 +733,26 @@
 }
 
 .stock-summary-table th {
-  background-color: #52525b;
-  color: white;
-  font-weight: 600;
+  background-color: transparent;
+  color: #000;
+  font-weight: 700;
+  font-size: 1rem;
+  border-bottom: 2px solid #334155;
 }
 
 .stock-summary-table tbody tr:nth-child(even) {
-  background-color: #f8fafc;
+  background-color: #ffffff;
+}
+
+.stock-summary-table tbody td {
+  color: #000;
 }
 
 .stock-summary-table tfoot tr.grand-total {
-  background-color: #3f3f46;
-  color: white;
+  background-color: transparent;
+  color: #000;
   font-weight: 700;
+  border-top: 2px solid #334155;
 }
 
 /* Materials table - professional styling */

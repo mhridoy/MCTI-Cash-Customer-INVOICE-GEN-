@@ -13,6 +13,23 @@ import { cn } from "@/lib/utils"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 
+// jspdf-autotable attaches lastAutoTable to the jsPDF instance at runtime
+declare module "jspdf" {
+  interface jsPDF {
+    lastAutoTable: { finalY: number }
+  }
+}
+
+// Generate a collision-safe unique ID (Date.now() alone can collide on fast entry)
+const newId = (): string =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+
+// Strip characters that are invalid in file names (e.g. "/" in a customer name)
+const sanitizeFilename = (value: string): string =>
+  value.replace(/[\\/:*?"<>|]+/g, "-").trim() || "Report"
+
 // Define the Material type
 interface Material {
   id: string
@@ -100,11 +117,10 @@ export default function Home() {
   const [reportNumber, setReportNumber] = useState<string | null>(null)
   const [isSavingToSheets, setIsSavingToSheets] = useState(false)
 
-  // Password protection for Head Office
+  // Password protection for Head Office (verified server-side via /api/auth)
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false)
   const [passwordInput, setPasswordInput] = useState("")
-  const [isPasswordVerified, setIsPasswordVerified] = useState(false)
-  const HEAD_OFFICE_PASSWORD = "Password2025"
+  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false)
 
   // Saved reports state
   interface SavedReport {
@@ -201,13 +217,27 @@ export default function Home() {
 
   // Save data to Google Sheets
   const saveToGoogleSheets = async () => {
-    if (!selectedBranch || !customerName || materials.length === 0 || !reportNumber) {
+    if (!selectedBranch || !customerName || materials.length === 0) {
       toast.error("Please ensure all data is filled before saving")
       return
     }
 
     setIsSavingToSheets(true)
     try {
+      // If we never got a report number (e.g. the earlier fetch failed), get one now
+      let numberToUse = reportNumber
+      if (!numberToUse) {
+        const numberResponse = await fetch(`/api/sheets?branch=${selectedBranch}`)
+        const numberData = await numberResponse.json()
+        if (numberData.success && numberData.reportNumber) {
+          numberToUse = numberData.reportNumber
+          setReportNumber(numberData.reportNumber)
+        } else {
+          toast.error("Could not get a report number from the server")
+          return
+        }
+      }
+
       const response = await fetch("/api/sheets", {
         method: "POST",
         headers: {
@@ -217,13 +247,17 @@ export default function Home() {
           customerName,
           materials,
           branch: selectedBranch,
-          reportNumber,
+          reportNumber: numberToUse,
         }),
       })
 
       const data = await response.json()
       if (data.success) {
-        toast.success(`Saved ${data.rowsAdded} items to Google Sheets (Report #${reportNumber})`)
+        // The server may assign a different number if ours was already taken
+        if (data.reportNumber && data.reportNumber !== reportNumber) {
+          setReportNumber(data.reportNumber)
+        }
+        toast.success(`Saved ${data.rowsAdded} items to Google Sheets (Report #${data.reportNumber || reportNumber})`)
       } else {
         toast.error(data.error || "Failed to save to Google Sheets")
       }
@@ -267,6 +301,7 @@ export default function Home() {
 
   const updateReport = async () => {
     if (!selectedBranch || !selectedReport) return
+    setIsSavingToSheets(true)
     try {
       const response = await fetch("/api/sheets", {
         method: "PUT",
@@ -289,6 +324,8 @@ export default function Home() {
     } catch (error) {
       console.error("Error updating report:", error)
       toast.error("Failed to update report")
+    } finally {
+      setIsSavingToSheets(false)
     }
   }
 
@@ -322,21 +359,32 @@ export default function Home() {
     setShowSavedReports(!showSavedReports)
   }
 
-  const verifyPassword = () => {
-    if (passwordInput === HEAD_OFFICE_PASSWORD) {
-      setIsPasswordVerified(true)
-      setShowPasswordPrompt(false)
-      setPasswordInput("")
-      setSelectedBranch("HEAD_OFFICE")
-      setIsBranchSet(true)
-      toast.success("Access granted to Head Office")
-      // Fetch saved reports for Head Office
-      setTimeout(() => {
+  const verifyPassword = async () => {
+    if (!passwordInput || isVerifyingPassword) return
+    setIsVerifyingPassword(true)
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: passwordInput }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        setShowPasswordPrompt(false)
+        setPasswordInput("")
+        setSelectedBranch("HEAD_OFFICE")
+        setIsBranchSet(true)
+        toast.success("Access granted to Head Office")
         fetchSavedReportsForBranch("HEAD_OFFICE")
-      }, 100)
-    } else {
-      toast.error("Incorrect password")
-      setPasswordInput("")
+      } else {
+        toast.error(data.error || "Incorrect password")
+        setPasswordInput("")
+      }
+    } catch (error) {
+      console.error("Error verifying password:", error)
+      toast.error("Could not verify password. Please try again.")
+    } finally {
+      setIsVerifyingPassword(false)
     }
   }
 
@@ -432,15 +480,22 @@ export default function Home() {
       return
     }
 
+    const parsedQuantity = Number.parseFloat(quantity)
+    const parsedUnitPrice = Number.parseFloat(unitPrice)
+    if (Number.isNaN(parsedQuantity) || parsedQuantity <= 0 || Number.isNaN(parsedUnitPrice) || parsedUnitPrice < 0) {
+      toast.error("Please enter a valid quantity and unit price")
+      return
+    }
+
     // Use the provided date or the most recent date
     const dateToUse = currentDate || getMostRecentDate() || new Date().toISOString().split("T")[0]
 
     const newMaterial: Material = {
-      id: Date.now().toString(),
+      id: newId(),
       date: dateToUse,
       name,
-      quantity: Number.parseFloat(quantity),
-      unitPrice: Number.parseFloat(unitPrice),
+      quantity: parsedQuantity,
+      unitPrice: parsedUnitPrice,
     }
 
     setMaterials([...materials, newMaterial])
@@ -481,14 +536,21 @@ export default function Home() {
       return
     }
 
+    const parsedQuantity = Number.parseFloat(editQuantity)
+    const parsedUnitPrice = Number.parseFloat(editUnitPrice)
+    if (Number.isNaN(parsedQuantity) || parsedQuantity <= 0 || Number.isNaN(parsedUnitPrice) || parsedUnitPrice < 0) {
+      toast.error("Please enter a valid quantity and unit price")
+      return
+    }
+
     const updatedMaterials = materials.map((material) => {
       if (material.id === editingId) {
         return {
           ...material,
           date: editDate,
           name: editName,
-          quantity: Number.parseFloat(editQuantity),
-          unitPrice: Number.parseFloat(editUnitPrice),
+          quantity: parsedQuantity,
+          unitPrice: parsedUnitPrice,
         }
       }
       return material
@@ -498,8 +560,9 @@ export default function Home() {
     cancelEdit()
   }
 
-  // Cancel editing
+  // Cancel editing (also removes never-filled rows created via "Insert row after")
   const cancelEdit = () => {
+    setMaterials((prev) => prev.filter((m) => m.name.trim() !== ""))
     setEditingId(null)
     setEditName("")
     setEditQuantity("")
@@ -514,7 +577,7 @@ export default function Home() {
     
     const materialToCopy = materials[index]
     const newMaterial: Material = {
-      id: Date.now().toString(),
+      id: newId(),
       date: materialToCopy.date,
       name: "",
       quantity: 0,
@@ -893,14 +956,14 @@ export default function Home() {
       doc.setLineWidth(0.3)
       doc.line(margin, 30, pageWidth - margin, 30)
 
-      // Customer and report info - two columns
-      doc.setFontSize(11)
+      // Customer and report info - two columns, larger font
+      doc.setFontSize(13)
       doc.setTextColor(0, 0, 0)
       doc.setFont("helvetica", "bold")
       doc.text("Customer:", margin, 38)
       doc.text("Date:", pageWidth / 2 + 10, 38)
       
-      doc.setFont("helvetica", "normal")
+      doc.setFont("helvetica", "bold")
       doc.text(customerName, margin + 22, 38)
       doc.text(formatDate(new Date().toISOString().split("T")[0]), pageWidth / 2 + 22, 38)
 
@@ -986,22 +1049,20 @@ export default function Home() {
           total: { halign: "right", cellWidth: 28 },
         },
         showFoot: "lastPage",
-        didDrawPage: (data) => {
-          // Page number footer
-          const pageCount = doc.getNumberOfPages()
-          doc.setFontSize(9)
-          doc.setTextColor(128, 128, 128)
-          doc.text(
-            `Page ${data.pageNumber} of ${pageCount}`,
-            pageWidth / 2,
-            pageHeight - 10,
-            { align: "center" }
-          )
-        },
       })
 
+      // Page number footers (added after the table so the total count is correct)
+      const pageCount = doc.getNumberOfPages()
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i)
+        doc.setFontSize(9)
+        doc.setFont("helvetica", "normal")
+        doc.setTextColor(128, 128, 128)
+        doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: "center" })
+      }
+
       // Save the PDF
-      doc.save(`${customerName}_Materials_Report_${new Date().toISOString().split("T")[0]}.pdf`)
+      doc.save(`${sanitizeFilename(customerName)}_Materials_Report_${new Date().toISOString().split("T")[0]}.pdf`)
       toast.success("PDF exported successfully")
     } catch (error) {
       console.error("Error exporting to PDF:", error)
@@ -1028,37 +1089,37 @@ export default function Home() {
       const grandTotals = getStockGrandTotals()
       const pageHeight = doc.internal.pageSize.getHeight()
       const pageWidth = doc.internal.pageSize.getWidth()
-      const margin = 5 // Minimal margin for full-width tables
+      const margin = 15 // Professional margins
       const tableWidth = pageWidth - (margin * 2)
-      const usableHeight = pageHeight - 12 // Leave space for page numbers
-      const colWidth = tableWidth / 2 - 2 // Width for two-column layout
+      const colWidth = (tableWidth - 8) / 2 // Two columns with gap
+      const usableHeight = pageHeight - 20 // Leave space for page numbers and footer
 
-      // Compact header
-      doc.setFontSize(12)
+      // Header - larger professional font
+      doc.setFontSize(14)
       doc.setFont("helvetica", "bold")
       doc.text(getCompanyName(), pageWidth / 2, 8, { align: "center" })
-      doc.setFontSize(10)
-      doc.text("STOCK REPORT", pageWidth / 2, 13, { align: "center" })
-      doc.setFontSize(8)
-      doc.setFont("helvetica", "normal")
-      doc.text(`Customer: ${customerName}  |  Date: ${formatDate(new Date().toISOString().split("T")[0])}`, pageWidth / 2, 18, { align: "center" })
-
-      let yPos = 22
-
-      // Summary table - full width
-      doc.setFontSize(9)
+      doc.setFontSize(12)
+      doc.text("STOCK REPORT", pageWidth / 2, 14, { align: "center" })
+      doc.setFontSize(12)
       doc.setFont("helvetica", "bold")
-      doc.setFillColor(82, 82, 91)
-      doc.rect(margin, yPos, tableWidth, 5, "F")
-      doc.setTextColor(255, 255, 255)
-      doc.text("SUMMARY", pageWidth / 2, yPos + 3.5, { align: "center" })
+      doc.text(`Customer: ${customerName}  |  Date: ${formatDate(new Date().toISOString().split("T")[0])}`, pageWidth / 2, 20, { align: "center" })
+
+      let yPos = 24
+
+      // Summary table - full width, no dark bg (ink saving)
+      doc.setFontSize(12)
+      doc.setFont("helvetica", "bold")
       doc.setTextColor(0, 0, 0)
-      yPos += 6
+      doc.text("SUMMARY", pageWidth / 2, yPos + 4, { align: "center" })
+      doc.setDrawColor(50, 50, 50)
+      doc.setLineWidth(0.3)
+      doc.line(margin, yPos + 5, margin + tableWidth, yPos + 5)
+      yPos += 8
 
       // Dynamic sizing for summary - larger font, fit on page 1
       const summaryRowCount = materialGroups.length + 2 // + header + footer
-      const summaryFontSize = summaryRowCount > 20 ? 8 : summaryRowCount > 12 ? 9 : 10
-      const summaryCellPadding = summaryRowCount > 20 ? 1.5 : 2
+      const summaryFontSize = summaryRowCount > 20 ? 10 : summaryRowCount > 12 ? 11 : 12
+      const summaryCellPadding = summaryRowCount > 20 ? 2 : 2.5
 
       const summaryColumns = ["S.No", "Material Name", "Qty", "Avg Price (SAR)", "Total (SAR)"]
       const summaryData = materialGroups.map((group, index) => [
@@ -1090,15 +1151,15 @@ export default function Home() {
           lineWidth: 0.15,
         },
         headStyles: {
-          fillColor: [180, 180, 180],
+          fillColor: [255, 255, 255],
           textColor: [0, 0, 0],
           fontStyle: "bold",
           cellPadding: summaryCellPadding,
           fontSize: summaryFontSize,
         },
         footStyles: {
-          fillColor: [63, 63, 70],
-          textColor: [255, 255, 255],
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
           fontStyle: "bold",
           cellPadding: summaryCellPadding,
           fontSize: summaryFontSize,
@@ -1118,69 +1179,73 @@ export default function Home() {
       // Force new page - Detailed breakdown always starts on page 2
       doc.addPage()
 
-      yPos = 10
+      yPos = 15
 
-      // Detailed breakdown header
-      doc.setFillColor(82, 82, 91)
-      doc.rect(margin, yPos, tableWidth, 5, "F")
-      doc.setTextColor(255, 255, 255)
-      doc.text("DETAILED BREAKDOWN", pageWidth / 2, yPos + 3.5, { align: "center" })
+      // Detailed breakdown header - professional style
+      doc.setFontSize(14)
+      doc.setFont("helvetica", "bold")
       doc.setTextColor(0, 0, 0)
-      yPos += 7
+      doc.text("DETAILED BREAKDOWN", pageWidth / 2, yPos, { align: "center" })
+      doc.setDrawColor(0, 0, 0)
+      doc.setLineWidth(0.5)
+      doc.line(margin, yPos + 2, margin + tableWidth, yPos + 2)
+      yPos += 12
 
-      // Two-column layout for detailed breakdown - starts on page 2
+      // Two-column layout - alternate left→right→left→right
       let leftY = yPos
       let rightY = yPos
-      let useLeftColumn = true
+
+      const detailFontSize = 9
+      const detailCellPadding = 2
+      const rowHeight = 5
 
       materialGroups.forEach((group, groupIndex) => {
-        const rowHeight = 4
-        const estimatedTableHeight = (group.items.length + 3) * rowHeight + 6
+        const tableRows = group.items.length + 2
+        const estimatedHeight = tableRows * rowHeight + 18
 
-        // Determine which column to use
-        const currentY = useLeftColumn ? leftY : rightY
-        const xOffset = useLeftColumn ? margin : margin + colWidth + 4
+        const preferLeft = groupIndex % 2 === 0 // Alternate: 0-left, 1-right, 2-left, 3-right...
+        const leftSpace = usableHeight - leftY
+        const rightSpace = usableHeight - rightY
 
-        // Check if we need a new page
-        if (currentY + estimatedTableHeight > usableHeight) {
-          if (useLeftColumn) {
-            // Try right column first
-            if (rightY + estimatedTableHeight <= usableHeight) {
-              useLeftColumn = false
-            } else {
-              // Both columns full, new page
-              doc.addPage()
-              leftY = 10
-              rightY = 10
-              useLeftColumn = true
-            }
-          } else {
-            // Right column full, check left
-            if (leftY + estimatedTableHeight <= usableHeight) {
-              useLeftColumn = true
-            } else {
-              // Both columns full, new page
-              doc.addPage()
-              leftY = 10
-              rightY = 10
-              useLeftColumn = true
-            }
-          }
+        let startY: number
+        let startX: number
+        let usedLeft: boolean
+
+        if (preferLeft && leftSpace >= estimatedHeight) {
+          startY = leftY
+          startX = margin
+          usedLeft = true
+        } else if (!preferLeft && rightSpace >= estimatedHeight) {
+          startY = rightY
+          startX = margin + colWidth + 8
+          usedLeft = false
+        } else if (leftSpace >= estimatedHeight) {
+          startY = leftY
+          startX = margin
+          usedLeft = true
+        } else if (rightSpace >= estimatedHeight) {
+          startY = rightY
+          startX = margin + colWidth + 8
+          usedLeft = false
+        } else {
+          doc.addPage()
+          leftY = 15
+          rightY = 15
+          startY = leftY
+          startX = margin
+          usedLeft = true
         }
 
-        const startY = useLeftColumn ? leftY : rightY
-        const startX = useLeftColumn ? margin : margin + colWidth + 4
-
-        // Material name header with serial number
-        doc.setFontSize(7)
+        // Material group title
+        doc.setFontSize(10)
         doc.setFont("helvetica", "bold")
-        doc.setFillColor(82, 82, 91)
-        doc.rect(startX, startY, colWidth, 4, "F")
-        doc.setTextColor(255, 255, 255)
-        doc.text(`${groupIndex + 1}. ${group.name}`, startX + 2, startY + 2.8)
         doc.setTextColor(0, 0, 0)
+        doc.text(`${groupIndex + 1}. ${group.name}`, startX + 2, startY + 2.5)
+        doc.setDrawColor(0, 0, 0)
+        doc.setLineWidth(0.3)
+        doc.line(startX, startY + 5, startX + colWidth, startY + 5)
 
-        const columns = ["S.No", "Date", "Qty", "Price", "Total"]
+        const columns = ["No", "Date", "Qty", "Price", "Total"]
         const data = group.items.map((item, itemIndex) => [
           (itemIndex + 1).toString(),
           formatDate(item.date),
@@ -1201,47 +1266,58 @@ export default function Home() {
           head: [columns],
           body: data,
           foot: footData,
-          startY: startY + 4,
+          startY: startY + 8,
           theme: "grid",
-          pageBreak: "avoid", // Don't break material groups across pages
+          pageBreak: "avoid",
           rowPageBreak: "avoid",
           styles: {
-            cellPadding: 1,
-            fontSize: 6,
+            cellPadding: detailCellPadding,
+            fontSize: detailFontSize,
+            textColor: [0, 0, 0],
             lineColor: [0, 0, 0],
-            lineWidth: 0.1,
+            lineWidth: 0.15,
           },
           headStyles: {
-            fillColor: [200, 200, 200],
+            fillColor: [255, 255, 255],
             textColor: [0, 0, 0],
             fontStyle: "bold",
-            cellPadding: 1.2,
+            fontSize: detailFontSize,
+            cellPadding: detailCellPadding,
+          },
+          bodyStyles: {
+            fillColor: [255, 255, 255],
+            textColor: [0, 0, 0],
+            fontSize: detailFontSize,
+            cellPadding: detailCellPadding,
           },
           footStyles: {
-            fillColor: [220, 220, 220],
+            fillColor: [255, 255, 255],
             textColor: [0, 0, 0],
             fontStyle: "bold",
+            fontSize: detailFontSize,
+            cellPadding: detailCellPadding,
+          },
+          alternateRowStyles: {
+            fillColor: [248, 250, 252],
           },
           columnStyles: {
-            0: { cellWidth: colWidth * 0.1, halign: "center" },
-            1: { cellWidth: colWidth * 0.25 },
-            2: { cellWidth: colWidth * 0.2, halign: "right" },
-            3: { cellWidth: colWidth * 0.22, halign: "right" },
-            4: { cellWidth: colWidth * 0.23, halign: "right" },
+            0: { cellWidth: colWidth * 0.12, halign: "center" },
+            1: { cellWidth: colWidth * 0.28, halign: "left" },
+            2: { cellWidth: colWidth * 0.18, halign: "right" },
+            3: { cellWidth: colWidth * 0.20, halign: "right" },
+            4: { cellWidth: colWidth * 0.22, halign: "right" },
           },
           margin: { left: startX, right: pageWidth - startX - colWidth },
           tableWidth: colWidth,
           showFoot: "lastPage",
         })
 
-        const finalY = doc.lastAutoTable.finalY + 3
+        const finalY = doc.lastAutoTable.finalY + 6
 
-        if (useLeftColumn) {
+        if (usedLeft) {
           leftY = finalY
-          useLeftColumn = false
         } else {
           rightY = finalY
-          useLeftColumn = true
         }
       })
 
@@ -1259,7 +1335,8 @@ export default function Home() {
         )
       }
 
-      doc.save(`Stock_Report_${customerName}_${new Date().toISOString().split("T")[0]}.pdf`)
+      doc.save(`Stock_Report_${sanitizeFilename(customerName)}_${new Date().toISOString().split("T")[0]}.pdf`)
+      toast.success("Stock PDF exported successfully")
     } catch (error) {
       console.error("Error exporting stock to PDF:", error)
       toast.error("Failed to export stock to PDF. Please try again.")
@@ -1328,7 +1405,7 @@ export default function Home() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `${customerName}_Materials_Report_${new Date().toISOString().split("T")[0]}.xlsx`
+      link.download = `${sanitizeFilename(customerName)}_Materials_Report_${new Date().toISOString().split("T")[0]}.xlsx`
 
       // Append to document, trigger click, and remove
       document.body.appendChild(link)
@@ -1337,6 +1414,7 @@ export default function Home() {
 
       // Release the object URL
       URL.revokeObjectURL(url)
+      toast.success("Excel file exported successfully")
     } catch (error) {
       console.error("Error exporting to Excel:", error)
       toast.error("Failed to export to Excel. Please try again.")
@@ -1465,7 +1543,7 @@ export default function Home() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `Stock_Report_${customerName}_${new Date().toISOString().split("T")[0]}.xlsx`
+      link.download = `Stock_Report_${sanitizeFilename(customerName)}_${new Date().toISOString().split("T")[0]}.xlsx`
 
       // Append to document, trigger click, and remove
       document.body.appendChild(link)
@@ -1474,6 +1552,7 @@ export default function Home() {
 
       // Release the object URL
       URL.revokeObjectURL(url)
+      toast.success("Stock Excel file exported successfully")
     } catch (error) {
       console.error("Error exporting stock to Excel:", error)
       toast.error("Failed to export stock to Excel. Please try again.")
@@ -1563,8 +1642,8 @@ export default function Home() {
                   >
                     Cancel
                   </Button>
-                  <Button onClick={verifyPassword} className="flex-1">
-                    Verify
+                  <Button onClick={verifyPassword} disabled={isVerifyingPassword} className="flex-1">
+                    {isVerifyingPassword ? "Verifying..." : "Verify"}
                   </Button>
                 </div>
               </div>
@@ -1682,7 +1761,7 @@ export default function Home() {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="bg-zinc-700 text-white">
+                      <tr className="bg-slate-800 text-white">
                         <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><Hash className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Report No</th>
                         <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><User className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Customer</th>
                         <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><Calendar className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Date</th>
@@ -1788,8 +1867,8 @@ export default function Home() {
             <CardContent className="pt-6">
               <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
                 <div>
-                  <h2 className="text-xl font-bold">Customer: {customerName}</h2>
-                  <p className="text-muted-foreground">Date: {formatDate(new Date().toISOString().split("T")[0])}</p>
+                  <h2 className="text-2xl font-bold text-black">Customer: {customerName}</h2>
+                  <p className="text-lg font-medium text-black">Date: {formatDate(new Date().toISOString().split("T")[0])}</p>
                   {reportNumber && (
                     <p className="text-lg font-semibold text-primary">Report No: {reportNumber}</p>
                   )}
@@ -1871,7 +1950,7 @@ export default function Home() {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="bg-zinc-700 text-white">
+                        <tr className="bg-slate-800 text-white">
                           <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><Hash className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Report No</th>
                           <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><User className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Customer</th>
                           <th className="px-5 py-3.5 text-left font-semibold text-sm tracking-wide"><Calendar className="h-3.5 w-3.5 inline mr-1 opacity-80" /> Date</th>
@@ -2093,39 +2172,39 @@ export default function Home() {
 
           {/* Editable Summary Table */}
           {showSummaryTable && materials.length > 0 && (
-            <Card className="mb-8 print:hidden overflow-hidden shadow-md border-2 border-primary/20">
-              <CardHeader className="bg-gradient-to-r from-emerald-800 to-emerald-700 text-white py-4 px-6">
-                <CardTitle className="text-lg font-bold flex items-center gap-2">
-                  <Table2 className="h-5 w-5" />
+            <Card className="mb-8 print:hidden overflow-hidden shadow-md border border-slate-200 bg-white">
+              <CardHeader className="bg-white border-b border-slate-200 py-4 px-6">
+                <CardTitle className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                  <Table2 className="h-5 w-5 text-slate-700" />
                   Editable Summary Table
                 </CardTitle>
-                <p className="text-emerald-100 text-sm mt-1">
+                <p className="text-slate-600 text-sm mt-1">
                   Unit Price এ পরিবর্তন করলে ঐ material এর সব item এর price আপডেট হবে
                 </p>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 bg-white">
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
+                  <table className="w-full border-collapse bg-white">
                     <thead>
-                      <tr className="bg-zinc-700 text-white">
-                        <th className="px-5 py-3.5 text-left font-semibold text-sm">Material Name</th>
-                        <th className="px-5 py-3.5 text-center font-semibold text-sm">Count</th>
-                        <th className="px-5 py-3.5 text-right font-semibold text-sm">Total Quantity</th>
-                        <th className="px-5 py-3.5 text-right font-semibold text-sm">Unit Price (﷼) - Editable</th>
-                        <th className="px-5 py-3.5 text-right font-semibold text-sm">Total Amount (﷼)</th>
+                      <tr className="bg-white border-b-2 border-slate-300">
+                        <th className="px-5 py-3.5 text-left font-bold text-base text-black">Material Name</th>
+                        <th className="px-5 py-3.5 text-center font-bold text-base text-black">Count</th>
+                        <th className="px-5 py-3.5 text-right font-bold text-base text-black">Total Quantity</th>
+                        <th className="px-5 py-3.5 text-right font-bold text-base text-black">Unit Price (﷼) - Editable</th>
+                        <th className="px-5 py-3.5 text-right font-bold text-base text-black">Total Amount (﷼)</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="bg-white">
                       {getMaterialGroups().map((group) => (
                         <tr
                           key={`${group.name}-${group.averagePrice}`}
-                          className="border-b border-slate-200 hover:bg-slate-50 transition-colors"
+                          className="border-b border-slate-200 hover:bg-slate-50/50 transition-colors bg-white"
                         >
-                          <td className="px-5 py-3 font-medium text-slate-800">{group.name}</td>
-                          <td className="px-5 py-3 text-center tabular-nums text-slate-600">
+                          <td className="px-5 py-3 font-medium text-black">{group.name}</td>
+                          <td className="px-5 py-3 text-center tabular-nums text-black">
                             {group.items.length}
                           </td>
-                          <td className="px-5 py-3 text-right tabular-nums font-medium">
+                          <td className="px-5 py-3 text-right tabular-nums font-medium text-black">
                             {group.totalQuantity.toFixed(2)}
                           </td>
                           <td className="px-5 py-3">
@@ -2156,22 +2235,22 @@ export default function Home() {
                               }}
                             />
                           </td>
-                          <td className="px-5 py-3 text-right font-semibold tabular-nums text-slate-800">
+                          <td className="px-5 py-3 text-right font-semibold tabular-nums text-black">
                             {group.totalAmount.toFixed(2)}
                           </td>
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot>
-                      <tr className="bg-zinc-700 text-white">
-                        <td className="px-5 py-4 font-bold" colSpan={2}>
+                    <tfoot className="bg-white">
+                      <tr className="bg-white border-t-2 border-slate-300">
+                        <td className="px-5 py-4 font-bold text-black" colSpan={2}>
                           Grand Total
                         </td>
-                        <td className="px-5 py-4 text-right font-bold tabular-nums">
+                        <td className="px-5 py-4 text-right font-bold tabular-nums text-black">
                           {getStockGrandTotals().totalQuantity.toFixed(2)}
                         </td>
                         <td className="px-5 py-4"></td>
-                        <td className="px-5 py-4 text-right font-bold tabular-nums">
+                        <td className="px-5 py-4 text-right font-bold tabular-nums text-slate-800">
                           ﷼ {grandTotal.toFixed(2)}
                         </td>
                       </tr>
@@ -2215,33 +2294,33 @@ export default function Home() {
             <div ref={contentRef} className="print:block materials-print-view">
               {/* Report Header for Print/PDF */}
               <div className="print:block hidden mb-8 materials-print-header">
-                                <h1 className="text-3xl font-bold text-center">{getCompanyName()}</h1>
-                                <p className="text-center text-muted-foreground">
+                                <h1 className="text-3xl font-bold text-center text-black">{getCompanyName()}</h1>
+                                <p className="text-center text-lg font-medium text-black">
                                   Generated on: {formatDate(new Date().toISOString().split("T")[0])}
                                 </p>
-                                <p className="text-center font-medium mt-2">Customer: {customerName}</p>
+                                <p className="text-center text-xl font-bold mt-2 text-black">Customer: {customerName}</p>
               </div>
 
-              {/* Materials Table */}
-              <Card className="mb-8 overflow-hidden shadow-md border-slate-200">
-                <CardHeader className="bg-white text-slate-900 py-4 px-6 border-b border-slate-200">
-                  <CardTitle className="text-lg font-bold">Materials List</CardTitle>
+              {/* Materials Table - white bg for ink saving */}
+              <Card className="mb-8 overflow-hidden shadow-md border border-slate-200 bg-white">
+                <CardHeader className="bg-white border-b-2 border-slate-300 py-4 px-6">
+                  <CardTitle className="text-lg font-bold text-slate-800">Materials List</CardTitle>
                 </CardHeader>
-                <CardContent className="p-0">
+                <CardContent className="p-0 bg-white">
                   {materials.length === 0 ? (
                     <p className="text-center text-slate-500 py-12">No materials added yet</p>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="w-full border-collapse materials-table materials-print-table">
+                      <table className="w-full border-collapse materials-table materials-print-table bg-white">
                         <thead>
-                          <tr className="bg-white text-slate-900 border-b border-slate-200">
-                            <th className="px-5 py-3.5 text-center font-semibold text-sm w-14">S.No</th>
-                            <th className="px-5 py-3.5 text-left font-semibold text-sm">Date</th>
-                            <th className="px-5 py-3.5 text-left font-semibold text-sm">Material Name</th>
-                            <th className="px-5 py-3.5 text-right font-semibold text-sm">Quantity</th>
-                            <th className="px-5 py-3.5 text-right font-semibold text-sm">Unit Price (﷼)</th>
-                            <th className="px-5 py-3.5 text-right font-semibold text-sm">Total Price (﷼)</th>
-                            <th className="px-5 py-3.5 text-center font-semibold text-sm print:hidden w-28">Actions</th>
+                          <tr className="bg-white border-b-2 border-slate-300">
+                            <th className="px-5 py-3.5 text-center font-bold text-base w-14 text-black">S.No</th>
+                            <th className="px-5 py-3.5 text-left font-bold text-base text-black">Date</th>
+                            <th className="px-5 py-3.5 text-left font-bold text-base text-black">Material Name</th>
+                            <th className="px-5 py-3.5 text-right font-bold text-base text-black">Quantity</th>
+                            <th className="px-5 py-3.5 text-right font-bold text-base text-black">Unit Price (﷼)</th>
+                            <th className="px-5 py-3.5 text-right font-bold text-base text-black">Total Price (﷼)</th>
+                            <th className="px-5 py-3.5 text-center font-bold text-base print:hidden w-28 text-black">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2251,12 +2330,12 @@ export default function Home() {
                                 const serialNo = sortedDates.slice(0, dateIndex).reduce((sum, d) => sum + groupedMaterials[d].length, 0) + index + 1
                                 return (
                                   <tr key={material.id} className={cn(
-                                  "border-b border-slate-100 transition-colors hover:bg-slate-50",
-                                  index % 2 === 0 ? "bg-white" : "bg-slate-50/50"
+                                  "border-b border-slate-200 transition-colors hover:bg-slate-50/50",
+                                  "bg-white"
                                 )}>
                                   {editingId === material.id ? (
                                     <>
-                                      <td className="px-5 py-3 text-center tabular-nums font-medium text-slate-600">{serialNo}</td>
+                                      <td className="px-5 py-3 text-center tabular-nums font-medium text-black">{serialNo}</td>
                                       <td className="px-5 py-3">
                                         <Input
                                           id="edit-date"
@@ -2355,16 +2434,12 @@ export default function Home() {
                                     </>
                                   ) : (
                                     <>
-                                      <td className="px-5 py-3 text-center tabular-nums font-medium text-slate-600">{serialNo}</td>
-                                      {index === 0 ? (
-                                        <td className="px-5 py-3 font-medium text-slate-800">{formatDate(material.date)}</td>
-                                      ) : (
-                                        <td className="px-5 py-3 font-medium text-slate-800">{formatDate(material.date)}</td>
-                                      )}
-                                      <td className="px-5 py-3 text-slate-800">{material.name}</td>
-                                      <td className="px-5 py-3 text-right tabular-nums">{material.quantity.toFixed(2)}</td>
-                                      <td className="px-5 py-3 text-right tabular-nums">{material.unitPrice.toFixed(2)}</td>
-                                      <td className="px-5 py-3 text-right font-medium tabular-nums text-slate-800">
+                                      <td className="px-5 py-3 text-center tabular-nums font-medium text-black">{serialNo}</td>
+                                      <td className="px-5 py-3 font-medium text-black">{formatDate(material.date)}</td>
+                                      <td className="px-5 py-3 text-black">{material.name}</td>
+                                      <td className="px-5 py-3 text-right tabular-nums text-black">{material.quantity.toFixed(2)}</td>
+                                      <td className="px-5 py-3 text-right tabular-nums text-black">{material.unitPrice.toFixed(2)}</td>
+                                      <td className="px-5 py-3 text-right font-medium tabular-nums text-black">
                                         {(material.quantity * material.unitPrice).toFixed(2)}
                                       </td>
                                       <td className="px-5 py-3 text-right print:hidden">
@@ -2409,30 +2484,30 @@ export default function Home() {
                                 )
                               })}
                               {/* Subtotal for date group */}
-                              <tr className="subtotal-row bg-slate-100 border-t-2 border-slate-200">
-                                <td colSpan={5} className="px-5 py-3 text-right font-semibold text-slate-800 text-sm">
+                              <tr className="subtotal-row bg-white border-t-2 border-slate-300">
+                                <td colSpan={5} className="px-5 py-3 text-right font-semibold text-black text-sm">
                                   Subtotal for {formatDate(date)}:
                                 </td>
-                                <td className="px-5 py-3 text-right font-semibold text-slate-800 text-sm tabular-nums">
+                                <td className="px-5 py-3 text-right font-semibold text-black text-sm tabular-nums">
                                   ﷼ {subtotalsByDate[dateIndex].subtotal.toFixed(2)}
                                 </td>
                                 <td className="print:hidden"></td>
                               </tr>
                               {/* Gap after each date group */}
-                              <tr className="h-1 bg-slate-50">
+                              <tr className="h-1 bg-white">
                                 <td colSpan={7}></td>
                               </tr>
                             </React.Fragment>
                           ))}
                         </tbody>
-                        <tfoot>
-                          <tr className="bg-zinc-700 text-white">
-                            <td colSpan={3} className="px-5 py-4 text-right font-bold text-base">
+                        <tfoot className="bg-white">
+                          <tr className="bg-white border-t-2 border-slate-300">
+                            <td colSpan={3} className="px-5 py-4 text-right font-bold text-base text-black">
                               GRAND TOTAL:
                             </td>
-                            <td className="px-5 py-4 text-right font-bold text-base tabular-nums">{grandTotalQuantity.toFixed(2)}</td>
+                            <td className="px-5 py-4 text-right font-bold text-base tabular-nums text-black">{grandTotalQuantity.toFixed(2)}</td>
                             <td className="px-5 py-4 text-right font-bold text-base"></td>
-                            <td className="px-5 py-4 text-right font-bold text-base tabular-nums">﷼ {grandTotal.toFixed(2)}</td>
+                            <td className="px-5 py-4 text-right font-bold text-base tabular-nums text-black">﷼ {grandTotal.toFixed(2)}</td>
                             <td className="print:hidden"></td>
                           </tr>
                         </tfoot>
@@ -2448,49 +2523,49 @@ export default function Home() {
               {/* Page 1: Report Header + Summary */}
               <div className="stock-report-page-1">
                 <div className="mb-8">
-                  <h1 className="text-3xl font-bold text-center">{getCompanyName()}</h1>
-                  <h2 className="text-xl text-center">Stock Report</h2>
-                  <p className="text-center text-muted-foreground">
+                  <h1 className="text-3xl font-bold text-center text-black">{getCompanyName()}</h1>
+                  <h2 className="text-xl text-center text-black">Stock Report</h2>
+                  <p className="text-center text-lg font-medium text-black">
                     Generated on: {formatDate(new Date().toISOString().split("T")[0])}
                   </p>
-                  <p className="text-center font-medium mt-2">Customer: {customerName}</p>
+                  <p className="text-center text-xl font-bold mt-2 text-black">Customer: {customerName}</p>
                 </div>
 
-                {/* Stock Summary Table - Page 1 only, larger font */}
-                <Card className="mb-8 stock-summary-section overflow-hidden shadow-md border-slate-200">
-                <CardHeader className="bg-zinc-700 text-white py-4 px-6">
-                  <CardTitle className="text-xl font-bold">Summary</CardTitle>
+                {/* Stock Summary Table - Page 1 only, larger font - white bg for printer ink saving */}
+                <Card className="mb-8 stock-summary-section overflow-hidden shadow-md border border-slate-200 bg-white">
+                <CardHeader className="bg-white border-b border-slate-300 py-4 px-6">
+                  <CardTitle className="text-xl font-bold text-slate-800">Summary</CardTitle>
                 </CardHeader>
-                <CardContent className="p-0">
+                <CardContent className="p-0 bg-white">
                   {materials.length === 0 ? (
                     <p className="text-center text-slate-500 py-8">No materials added yet</p>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="w-full border-collapse stock-summary-table">
+                      <table className="w-full border-collapse stock-summary-table bg-white">
                         <thead>
-                          <tr className="bg-zinc-700 text-white">
-                            <th className="px-6 py-4 text-left font-semibold text-base">Material Name</th>
-                            <th className="px-6 py-4 text-right font-semibold text-base">Total Quantity</th>
-                            <th className="px-6 py-4 text-right font-semibold text-base">Average Price (﷼)</th>
-                            <th className="px-6 py-4 text-right font-semibold text-base">Total Amount (﷼)</th>
+                          <tr className="bg-white border-b-2 border-slate-300">
+                            <th className="px-6 py-4 text-left font-bold text-base text-black">Material Name</th>
+                            <th className="px-6 py-4 text-right font-bold text-base text-black">Total Quantity</th>
+                            <th className="px-6 py-4 text-right font-bold text-base text-black">Average Price (﷼)</th>
+                            <th className="px-6 py-4 text-right font-bold text-base text-black">Total Amount (﷼)</th>
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="bg-white">
                           {getMaterialGroups().map((group) => (
-                            <tr key={group.name} className="border-b border-slate-200 hover:bg-slate-50">
-                              <td className="px-6 py-4 text-base font-medium text-slate-800">{group.name}</td>
-                              <td className="px-6 py-4 text-right text-base tabular-nums">{group.totalQuantity.toFixed(2)}</td>
-                              <td className="px-6 py-4 text-right text-base tabular-nums">{group.averagePrice.toFixed(2)}</td>
-                              <td className="px-6 py-4 text-right text-base font-semibold tabular-nums text-slate-800">{group.totalAmount.toFixed(2)}</td>
+                            <tr key={group.name} className="border-b border-slate-200 bg-white">
+                              <td className="px-6 py-4 text-base font-medium text-black">{group.name}</td>
+                              <td className="px-6 py-4 text-right text-base tabular-nums text-black">{group.totalQuantity.toFixed(2)}</td>
+                              <td className="px-6 py-4 text-right text-base tabular-nums text-black">{group.averagePrice.toFixed(2)}</td>
+                              <td className="px-6 py-4 text-right text-base font-semibold tabular-nums text-black">{group.totalAmount.toFixed(2)}</td>
                             </tr>
                           ))}
                         </tbody>
-                        <tfoot>
-                          <tr className="grand-total bg-zinc-700 text-white">
-                            <td className="px-6 py-4 text-lg font-bold">Grand Total</td>
-                            <td className="px-6 py-4 text-right text-lg font-bold tabular-nums">{getStockGrandTotals().totalQuantity.toFixed(2)}</td>
+                        <tfoot className="bg-white">
+                          <tr className="grand-total bg-white border-t-2 border-slate-300">
+                            <td className="px-6 py-4 text-lg font-bold text-black">Grand Total</td>
+                            <td className="px-6 py-4 text-right text-lg font-bold tabular-nums text-black">{getStockGrandTotals().totalQuantity.toFixed(2)}</td>
                             <td className="px-6 py-4"></td>
-                            <td className="px-6 py-4 text-right text-lg font-bold tabular-nums">{getStockGrandTotals().totalAmount.toFixed(2)}</td>
+                            <td className="px-6 py-4 text-right text-lg font-bold tabular-nums text-black">{getStockGrandTotals().totalAmount.toFixed(2)}</td>
                           </tr>
                         </tfoot>
                       </table>
@@ -2513,32 +2588,32 @@ export default function Home() {
                     <div className="detailed-breakdown-grid">
                       {getMaterialGroups().map((group) => (
                         <div key={group.name} className="material-group">
-                          <h3 className="text-base font-bold mb-2 print:text-sm">{group.name}</h3>
+                          <h3 className="text-lg font-bold mb-2 text-black">{group.name}</h3>
                           <table className="w-full border-collapse stock-report-table breakdown-table">
                             <thead>
                               <tr>
-                                <th>Date</th>
-                                <th>Quantity</th>
-                                <th>Unit Price (﷼)</th>
-                                <th>Total Price (﷼)</th>
+                                <th className="font-bold text-base text-black">Date</th>
+                                <th className="font-bold text-base text-black">Quantity</th>
+                                <th className="font-bold text-base text-black">Unit Price (﷼)</th>
+                                <th className="font-bold text-base text-black">Total Price (﷼)</th>
                               </tr>
                             </thead>
                             <tbody>
                               {group.items.map((item) => (
                                 <tr key={item.id}>
-                                  <td>{formatDate(item.date)}</td>
-                                  <td className="text-right">{item.quantity.toFixed(2)}</td>
-                                  <td className="text-right">{item.unitPrice.toFixed(2)}</td>
-                                  <td className="text-right">{(item.quantity * item.unitPrice).toFixed(2)}</td>
+                                  <td className="text-black">{formatDate(item.date)}</td>
+                                  <td className="text-right text-black">{item.quantity.toFixed(2)}</td>
+                                  <td className="text-right text-black">{item.unitPrice.toFixed(2)}</td>
+                                  <td className="text-right text-black">{(item.quantity * item.unitPrice).toFixed(2)}</td>
                                 </tr>
                               ))}
                             </tbody>
                             <tfoot>
                               <tr className="group-total">
-                                <td>Subtotal</td>
-                                <td className="text-right">{group.totalQuantity.toFixed(2)}</td>
-                                <td className="text-right">{group.averagePrice.toFixed(2)}</td>
-                                <td className="text-right">{group.totalAmount.toFixed(2)}</td>
+                                <td className="font-bold text-black">Subtotal</td>
+                                <td className="text-right font-bold text-black">{group.totalQuantity.toFixed(2)}</td>
+                                <td className="text-right font-bold text-black">{group.averagePrice.toFixed(2)}</td>
+                                <td className="text-right font-bold text-black">{group.totalAmount.toFixed(2)}</td>
                               </tr>
                             </tfoot>
                           </table>

@@ -1,30 +1,68 @@
-# MCTI Bill Generator
+# MCTI Cash Customer Invoice Generator
 
-*Automatically synced with your [v0.app](https://v0.app) deployments*
+Material tracking and invoice generation system for Tabib Al Arabia / MCTI branches. Built with Next.js 14, React, Tailwind CSS, and Google Sheets as the storage backend.
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/mhridoys-projects/v0-web-app-with-table)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/ztlkhE3yjE0)
+## Features
 
-## Overview
+- Branch selection (Head Office is password-protected, verified server-side)
+- Fast material entry with autocomplete, Excel-style keyboard navigation, and inline row editing
+- Reports saved to Google Sheets with auto-incrementing report numbers (duplicate-safe)
+- Load, update, and delete previously saved invoices
+- Export to PDF (delivery note and stock report), Excel, and print views
+- Editable summary table for bulk unit-price updates per material
+- Work-in-progress is kept in localStorage so a page refresh doesn't lose data
 
-This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.app](https://v0.app).
+## Getting started
 
-## Deployment
+1. Install dependencies:
 
-Your project is live at:
+   ```bash
+   npm install
+   ```
 
-**[https://vercel.com/mhridoys-projects/v0-web-app-with-table](https://vercel.com/mhridoys-projects/v0-web-app-with-table)**
+2. Configure environment variables:
 
-## Build your app
+   ```bash
+   cp .env.example .env.local
+   ```
 
-Continue building your app on:
+   Then fill in the values (see below).
 
-**[https://v0.app/chat/ztlkhE3yjE0](https://v0.app/chat/ztlkhE3yjE0)**
+3. Run the dev server:
 
-## How It Works
+   ```bash
+   npm run dev
+   ```
 
-1. Create and modify your project using [v0.app](https://v0.app)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+   Open http://localhost:3000.
+
+## Environment variables
+
+| Variable | Description |
+|---|---|
+| `GOOGLE_SPREADSHEET_ID` | ID of the Google Sheets spreadsheet that stores reports |
+| `GOOGLE_PROJECT_ID` | Google Cloud project ID of the service account |
+| `GOOGLE_CLIENT_EMAIL` | Service account email |
+| `GOOGLE_PRIVATE_KEY` | Service account private key (keep quotes, use `\n` for newlines) |
+| `HEAD_OFFICE_PASSWORD` | Password required to enter the Head Office branch |
+
+For production, set the same variables in **Vercel → Project Settings → Environment Variables** and redeploy.
+
+> **Security note:** an earlier version of this repo had the service-account private key committed in source code. That key is in git history and should be considered compromised — rotate it in Google Cloud Console (IAM & Admin → Service Accounts → Keys) and update `GOOGLE_PRIVATE_KEY` everywhere.
+
+The service account must have edit access to the spreadsheet (share the sheet with the service account email).
+
+## Project structure
+
+- `app/page.tsx` — the whole UI: branch/customer flow, material table, exports
+- `app/api/sheets/route.ts` — Google Sheets CRUD (reports, report numbers)
+- `app/api/auth/route.ts` — server-side Head Office password check
+- `lib/materials-list.ts` — autocomplete suggestions for material names
+- `components/ui/` — shadcn/ui primitives (button, card, input, label)
+
+## Scripts
+
+- `npm run dev` — development server
+- `npm run build` — production build (TypeScript and ESLint errors fail the build)
+- `npm run start` — serve the production build
+- `npm run lint` — lint
