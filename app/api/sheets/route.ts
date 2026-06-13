@@ -1,5 +1,19 @@
 import { google } from "googleapis"
 import { NextRequest, NextResponse } from "next/server"
+import { verifySessionToken, SESSION_COOKIE } from "@/lib/session"
+
+// Every method requires a valid session cookie (issued by /api/auth) so the
+// data API cannot be read or modified by anonymous internet traffic.
+function requireSession(request: NextRequest): NextResponse | null {
+  const session = verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value)
+  if (!session) {
+    return NextResponse.json(
+      { error: "Not authenticated. Please select your branch again.", success: false },
+      { status: 401 },
+    )
+  }
+  return null
+}
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || "1-nHu605DRJ-qF6nmRteI30X7rvDBiu2INq8ti20f76A"
 
@@ -118,6 +132,37 @@ async function ensureSheetExists(sheets: SheetsClient, sheetName: string) {
   }
 }
 
+// Resolve the actual row for a report. Row indexes shift when rows are deleted,
+// so trusting a stale rowIndex can update/delete the WRONG report. We verify the
+// report number at the given index, and if it doesn't match, find it by number.
+async function resolveRowIndex(
+  sheets: SheetsClient,
+  sheetName: string,
+  rowIndex: number,
+  reportNumber: string | undefined,
+): Promise<number | null> {
+  if (!reportNumber) return rowIndex // backwards compatibility
+
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${sheetName}!A:A`,
+    })
+    const values = response.data.values || []
+
+    // Fast path: the row is where the client thinks it is
+    if (values[rowIndex - 1]?.[0] === reportNumber) return rowIndex
+
+    // Rows shifted - find the report by its number instead
+    for (let i = 1; i < values.length; i++) {
+      if (values[i]?.[0] === reportNumber) return i + 1
+    }
+    return null // report no longer exists
+  } catch {
+    return rowIndex
+  }
+}
+
 async function getSheetId(sheets: SheetsClient, sheetName: string): Promise<number | null> {
   try {
     const spreadsheet = await sheets.spreadsheets.get({
@@ -149,6 +194,8 @@ function computeTotals(materials: MaterialPayload[]) {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = requireSession(request)
+  if (authError) return authError
   try {
     const { searchParams } = new URL(request.url)
     const branch = searchParams.get("branch") || "MCTI_TASLIYA"
@@ -201,6 +248,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = requireSession(request)
+  if (authError) return authError
   try {
     const body = await request.json()
     const { customerName, materials, branch, reportNumber } = body
@@ -256,6 +305,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const authError = requireSession(request)
+  if (authError) return authError
   try {
     const body = await request.json()
     const { branch, rowIndex, customerName, materials, reportNumber } = body
@@ -267,12 +318,20 @@ export async function PUT(request: NextRequest) {
     const sheets = await getGoogleSheetsClient()
     const sheetName = getSheetName(branch)
 
+    const actualRowIndex = await resolveRowIndex(sheets, sheetName, rowIndex, reportNumber)
+    if (actualRowIndex === null) {
+      return NextResponse.json(
+        { error: `Report #${reportNumber} no longer exists. Refresh the list and try again.`, success: false },
+        { status: 409 },
+      )
+    }
+
     const { totalQuantity, totalAmount } = computeTotals(materials)
     const branchName = branch === "HEAD_OFFICE" ? "Head Office" : "MCTI Tasliya"
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!A${rowIndex}:G${rowIndex}`,
+      range: `${sheetName}!A${actualRowIndex}:G${actualRowIndex}`,
       valueInputOption: "RAW",
       requestBody: {
         values: [[reportNumber, customerName, new Date().toISOString().split("T")[0], totalQuantity, totalAmount, JSON.stringify(materials), branchName]],
@@ -287,10 +346,13 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const authError = requireSession(request)
+  if (authError) return authError
   try {
     const { searchParams } = new URL(request.url)
     const branch = searchParams.get("branch") || "MCTI_TASLIYA"
     const rowIndex = parseInt(searchParams.get("rowIndex") || "0", 10)
+    const reportNumber = searchParams.get("reportNumber") || undefined
 
     if (!rowIndex || rowIndex < 2) {
       return NextResponse.json({ error: "Invalid row index", success: false }, { status: 400 })
@@ -298,6 +360,14 @@ export async function DELETE(request: NextRequest) {
 
     const sheets = await getGoogleSheetsClient()
     const sheetName = getSheetName(branch)
+
+    const actualRowIndex = await resolveRowIndex(sheets, sheetName, rowIndex, reportNumber)
+    if (actualRowIndex === null) {
+      return NextResponse.json(
+        { error: `Report #${reportNumber} no longer exists. Refresh the list.`, success: false },
+        { status: 409 },
+      )
+    }
 
     const sheetId = await getSheetId(sheets, sheetName)
     if (sheetId === null) {
@@ -313,8 +383,8 @@ export async function DELETE(request: NextRequest) {
               range: {
                 sheetId: sheetId,
                 dimension: "ROWS",
-                startIndex: rowIndex - 1,
-                endIndex: rowIndex,
+                startIndex: actualRowIndex - 1,
+                endIndex: actualRowIndex,
               },
             },
           },

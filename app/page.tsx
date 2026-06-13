@@ -11,7 +11,7 @@ import { formatDate } from "@/lib/utils"
 import { materialsList } from "@/lib/materials-list"
 import { cn } from "@/lib/utils"
 import { jsPDF } from "jspdf"
-import autoTable from "jspdf-autotable"
+import autoTable, { RowInput } from "jspdf-autotable"
 
 // jspdf-autotable attaches lastAutoTable to the jsPDF instance at runtime
 declare module "jspdf" {
@@ -117,10 +117,12 @@ export default function Home() {
   const [reportNumber, setReportNumber] = useState<string | null>(null)
   const [isSavingToSheets, setIsSavingToSheets] = useState(false)
 
-  // Password protection for Head Office (verified server-side via /api/auth)
+  // Branch authentication (verified server-side via /api/auth, which issues
+  // an HttpOnly session cookie required by the data API)
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false)
   const [passwordInput, setPasswordInput] = useState("")
   const [isVerifyingPassword, setIsVerifyingPassword] = useState(false)
+  const [pendingBranch, setPendingBranch] = useState<BranchType>("HEAD_OFFICE")
 
   // Saved reports state
   interface SavedReport {
@@ -165,8 +167,29 @@ export default function Home() {
         setCustomerName(savedData.customerName)
         setMaterials(savedData.materials)
         if (savedData.selectedBranch) {
-          setSelectedBranch(savedData.selectedBranch as BranchType)
+          const savedBranch = savedData.selectedBranch as BranchType
+          setSelectedBranch(savedBranch)
           setIsBranchSet(true)
+          // Re-establish the API session for the saved branch: keep an existing
+          // valid cookie, otherwise try a silent (passwordless) login. If that
+          // fails too, send the user back to branch selection.
+          ;(async () => {
+            try {
+              const check = await fetch("/api/auth").then((r) => r.json())
+              if (check.authenticated && check.branch === savedBranch) return
+              const silent = await fetch("/api/auth", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ branch: savedBranch }),
+              })
+              if (!silent.ok) {
+                setIsBranchSet(false)
+                setSelectedBranch(null)
+              }
+            } catch {
+              // Network error - leave state as is so the app still works offline
+            }
+          })()
         }
         if (savedData.customerName) {
           setIsCustomerSet(true)
@@ -205,6 +228,10 @@ export default function Home() {
     if (!selectedBranch) return
     try {
       const response = await fetch(`/api/sheets?branch=${selectedBranch}`)
+      if (response.status === 401) {
+        handleSessionExpired()
+        return
+      }
       const data = await response.json()
       if (data.success && data.reportNumber) {
         setReportNumber(data.reportNumber)
@@ -251,6 +278,10 @@ export default function Home() {
         }),
       })
 
+      if (response.status === 401) {
+        handleSessionExpired()
+        return
+      }
       const data = await response.json()
       if (data.success) {
         // The server may assign a different number if ours was already taken
@@ -274,6 +305,10 @@ export default function Home() {
     setIsLoadingReports(true)
     try {
       const response = await fetch(`/api/sheets?branch=${selectedBranch}&action=getReports`)
+      if (response.status === 401) {
+        handleSessionExpired()
+        return
+      }
       const data = await response.json()
       if (data.success) {
         setSavedReports(data.reports)
@@ -314,6 +349,10 @@ export default function Home() {
           reportNumber: selectedReport.reportNumber,
         }),
       })
+      if (response.status === 401) {
+        handleSessionExpired()
+        return
+      }
       const data = await response.json()
       if (data.success) {
         toast.success("Report updated successfully")
@@ -329,13 +368,20 @@ export default function Home() {
     }
   }
 
-  const deleteReport = async (rowIndex: number) => {
+  const deleteReport = async (rowIndex: number, reportNum?: string) => {
     if (!selectedBranch) return
     if (!confirm("Are you sure you want to delete this report? This cannot be undone.")) return
     try {
-      const response = await fetch(`/api/sheets?branch=${selectedBranch}&rowIndex=${rowIndex}`, {
+      // Pass the report number so the server verifies it deletes the right row
+      // even if other rows were added/removed since the list was loaded
+      const numberParam = reportNum ? `&reportNumber=${encodeURIComponent(reportNum)}` : ""
+      const response = await fetch(`/api/sheets?branch=${selectedBranch}&rowIndex=${rowIndex}${numberParam}`, {
         method: "DELETE",
       })
+      if (response.status === 401) {
+        handleSessionExpired()
+        return
+      }
       const data = await response.json()
       if (data.success) {
         toast.success("Report deleted successfully")
@@ -359,25 +405,43 @@ export default function Home() {
     setShowSavedReports(!showSavedReports)
   }
 
-  const verifyPassword = async () => {
-    if (!passwordInput || isVerifyingPassword) return
-    setIsVerifyingPassword(true)
+  // Ask the server for a session cookie. Returns the HTTP status.
+  const requestSession = async (branch: BranchType, password?: string): Promise<{ ok: boolean; status: number; error?: string }> => {
     try {
       const response = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: passwordInput }),
+        body: JSON.stringify({ branch, password }),
       })
-      const data = await response.json()
-      if (data.success) {
+      const data = await response.json().catch(() => ({}))
+      return { ok: response.ok && data.success, status: response.status, error: data.error }
+    } catch {
+      return { ok: false, status: 0 }
+    }
+  }
+
+  // Called when the session cookie is missing/expired and the API returns 401
+  const handleSessionExpired = () => {
+    toast.error("Session expired - please select your branch again")
+    setIsBranchSet(false)
+    setSelectedBranch(null)
+    setSavedReports([])
+  }
+
+  const verifyPassword = async () => {
+    if (!passwordInput || isVerifyingPassword) return
+    setIsVerifyingPassword(true)
+    try {
+      const result = await requestSession(pendingBranch, passwordInput)
+      if (result.ok) {
         setShowPasswordPrompt(false)
         setPasswordInput("")
-        setSelectedBranch("HEAD_OFFICE")
+        setSelectedBranch(pendingBranch)
         setIsBranchSet(true)
-        toast.success("Access granted to Head Office")
-        fetchSavedReportsForBranch("HEAD_OFFICE")
+        toast.success(`Access granted to ${BRANCH_OPTIONS[pendingBranch]}`)
+        fetchSavedReportsForBranch(pendingBranch)
       } else {
-        toast.error(data.error || "Incorrect password")
+        toast.error(result.error || "Incorrect password")
         setPasswordInput("")
       }
     } catch (error) {
@@ -389,6 +453,7 @@ export default function Home() {
   }
 
   const handleHeadOfficeSelect = () => {
+    setPendingBranch("HEAD_OFFICE")
     setShowPasswordPrompt(true)
   }
 
@@ -414,14 +479,20 @@ export default function Home() {
     }
   }
 
-  // Handle branch selection
-  const handleBranchSelect = (branch: BranchType) => {
-    setSelectedBranch(branch)
-    setIsBranchSet(true)
-    // Automatically fetch saved reports when branch is selected
-    setTimeout(() => {
+  // Handle branch selection (gets a session cookie from the server first)
+  const handleBranchSelect = async (branch: BranchType) => {
+    const result = await requestSession(branch)
+    if (result.ok) {
+      setSelectedBranch(branch)
+      setIsBranchSet(true)
       fetchSavedReportsForBranch(branch)
-    }, 100)
+    } else if (result.status === 401) {
+      // This branch is password-protected (MCTI_PASSWORD is set)
+      setPendingBranch(branch)
+      setShowPasswordPrompt(true)
+    } else {
+      toast.error("Could not connect to the server. Please try again.")
+    }
   }
   
   // Fetch saved reports for a specific branch (used after branch selection)
@@ -1091,8 +1162,6 @@ export default function Home() {
       const pageWidth = doc.internal.pageSize.getWidth()
       const margin = 15 // Professional margins
       const tableWidth = pageWidth - (margin * 2)
-      const colWidth = (tableWidth - 8) / 2 // Two columns with gap
-      const usableHeight = pageHeight - 20 // Leave space for page numbers and footer
 
       // Header - larger professional font
       doc.setFontSize(14)
@@ -1191,134 +1260,73 @@ export default function Home() {
       doc.line(margin, yPos + 2, margin + tableWidth, yPos + 2)
       yPos += 12
 
-      // Two-column layout - alternate left→right→left→right
-      let leftY = yPos
-      let rightY = yPos
-
-      const detailFontSize = 9
-      const detailCellPadding = 2
-      const rowHeight = 5
-
+      // Single continuous ledger table - paginates cleanly for any number of
+      // materials (the old two-column layout broke once groups got large)
+      const ledgerBody: RowInput[] = []
       materialGroups.forEach((group, groupIndex) => {
-        const tableRows = group.items.length + 2
-        const estimatedHeight = tableRows * rowHeight + 18
-
-        const preferLeft = groupIndex % 2 === 0 // Alternate: 0-left, 1-right, 2-left, 3-right...
-        const leftSpace = usableHeight - leftY
-        const rightSpace = usableHeight - rightY
-
-        let startY: number
-        let startX: number
-        let usedLeft: boolean
-
-        if (preferLeft && leftSpace >= estimatedHeight) {
-          startY = leftY
-          startX = margin
-          usedLeft = true
-        } else if (!preferLeft && rightSpace >= estimatedHeight) {
-          startY = rightY
-          startX = margin + colWidth + 8
-          usedLeft = false
-        } else if (leftSpace >= estimatedHeight) {
-          startY = leftY
-          startX = margin
-          usedLeft = true
-        } else if (rightSpace >= estimatedHeight) {
-          startY = rightY
-          startX = margin + colWidth + 8
-          usedLeft = false
-        } else {
-          doc.addPage()
-          leftY = 15
-          rightY = 15
-          startY = leftY
-          startX = margin
-          usedLeft = true
-        }
-
-        // Material group title
-        doc.setFontSize(10)
-        doc.setFont("helvetica", "bold")
-        doc.setTextColor(0, 0, 0)
-        doc.text(`${groupIndex + 1}. ${group.name}`, startX + 2, startY + 2.5)
-        doc.setDrawColor(0, 0, 0)
-        doc.setLineWidth(0.3)
-        doc.line(startX, startY + 5, startX + colWidth, startY + 5)
-
-        const columns = ["No", "Date", "Qty", "Price", "Total"]
-        const data = group.items.map((item, itemIndex) => [
-          (itemIndex + 1).toString(),
-          formatDate(item.date),
-          item.quantity.toFixed(2),
-          item.unitPrice.toFixed(2),
-          (item.quantity * item.unitPrice).toFixed(2),
+        // Group header row
+        ledgerBody.push([
+          {
+            content: `${groupIndex + 1}. ${group.name}`,
+            colSpan: 5,
+            styles: { fontStyle: "bold", fillColor: [241, 245, 249], halign: "left" },
+          },
         ])
-
-        const footData = [[
-          "",
-          "Subtotal",
-          group.totalQuantity.toFixed(2),
-          group.averagePrice.toFixed(2),
-          group.totalAmount.toFixed(2),
-        ]]
-
-        autoTable(doc, {
-          head: [columns],
-          body: data,
-          foot: footData,
-          startY: startY + 8,
-          theme: "grid",
-          pageBreak: "avoid",
-          rowPageBreak: "avoid",
-          styles: {
-            cellPadding: detailCellPadding,
-            fontSize: detailFontSize,
-            textColor: [0, 0, 0],
-            lineColor: [0, 0, 0],
-            lineWidth: 0.15,
-          },
-          headStyles: {
-            fillColor: [255, 255, 255],
-            textColor: [0, 0, 0],
-            fontStyle: "bold",
-            fontSize: detailFontSize,
-            cellPadding: detailCellPadding,
-          },
-          bodyStyles: {
-            fillColor: [255, 255, 255],
-            textColor: [0, 0, 0],
-            fontSize: detailFontSize,
-            cellPadding: detailCellPadding,
-          },
-          footStyles: {
-            fillColor: [255, 255, 255],
-            textColor: [0, 0, 0],
-            fontStyle: "bold",
-            fontSize: detailFontSize,
-            cellPadding: detailCellPadding,
-          },
-          alternateRowStyles: {
-            fillColor: [248, 250, 252],
-          },
-          columnStyles: {
-            0: { cellWidth: colWidth * 0.12, halign: "center" },
-            1: { cellWidth: colWidth * 0.28, halign: "left" },
-            2: { cellWidth: colWidth * 0.18, halign: "right" },
-            3: { cellWidth: colWidth * 0.20, halign: "right" },
-            4: { cellWidth: colWidth * 0.22, halign: "right" },
-          },
-          margin: { left: startX, right: pageWidth - startX - colWidth },
-          tableWidth: colWidth,
-          showFoot: "lastPage",
+        // Item rows
+        group.items.forEach((item, itemIndex) => {
+          ledgerBody.push([
+            (itemIndex + 1).toString(),
+            formatDate(item.date),
+            item.quantity.toFixed(2),
+            item.unitPrice.toFixed(2),
+            (item.quantity * item.unitPrice).toFixed(2),
+          ])
         })
+        // Subtotal row
+        ledgerBody.push([
+          { content: "Subtotal", colSpan: 2, styles: { fontStyle: "bold", halign: "right" } },
+          { content: group.totalQuantity.toFixed(2), styles: { fontStyle: "bold", halign: "right" } },
+          { content: group.averagePrice.toFixed(2), styles: { fontStyle: "bold", halign: "right" } },
+          { content: group.totalAmount.toFixed(2), styles: { fontStyle: "bold", halign: "right" } },
+        ])
+      })
+      // Grand total row
+      ledgerBody.push([
+        { content: "GRAND TOTAL", colSpan: 2, styles: { fontStyle: "bold", halign: "right" } },
+        { content: grandTotals.totalQuantity.toFixed(2), styles: { fontStyle: "bold", halign: "right" } },
+        "",
+        { content: grandTotals.totalAmount.toFixed(2), styles: { fontStyle: "bold", halign: "right" } },
+      ])
 
-        const finalY = doc.lastAutoTable.finalY + 6
-
-        if (usedLeft) {
-          leftY = finalY
-        } else {
-          rightY = finalY
-        }
+      autoTable(doc, {
+        head: [["S.No", "Date", "Qty", "Unit Price (SAR)", "Total (SAR)"]],
+        body: ledgerBody,
+        startY: yPos,
+        theme: "grid",
+        rowPageBreak: "avoid",
+        styles: {
+          cellPadding: 2.5,
+          fontSize: 9,
+          textColor: [0, 0, 0],
+          lineColor: [203, 213, 225],
+          lineWidth: 0.1,
+        },
+        headStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          lineColor: [15, 23, 42],
+          lineWidth: 0.2,
+        },
+        columnStyles: {
+          0: { cellWidth: tableWidth * 0.1, halign: "center" },
+          1: { cellWidth: tableWidth * 0.34, halign: "left" },
+          2: { cellWidth: tableWidth * 0.16, halign: "right" },
+          3: { cellWidth: tableWidth * 0.2, halign: "right" },
+          4: { cellWidth: tableWidth * 0.2, halign: "right" },
+        },
+        margin: { left: margin, right: margin },
+        tableWidth: tableWidth,
       })
 
       // Add page numbers
@@ -1615,12 +1623,14 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <Card className="w-full max-w-md mx-4">
             <CardHeader>
-              <CardTitle className="text-center">Head Office Access</CardTitle>
+              <CardTitle className="text-center">
+                {pendingBranch === "HEAD_OFFICE" ? "Head Office Access" : "MCTI Branch Access"}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <p className="text-center text-muted-foreground">
-                  Please enter the password to access Head Office:
+                  Please enter the password to access {pendingBranch === "HEAD_OFFICE" ? "Head Office" : "MCTI Branch"}:
                 </p>
                 <Input
                   type="password"
@@ -1806,7 +1816,7 @@ export default function Home() {
                               <Button 
                                 size="sm" 
                                 variant="outline"
-                                onClick={() => deleteReport(report.rowIndex)}
+                                onClick={() => deleteReport(report.rowIndex, report.reportNumber)}
                                 className="h-8 px-2.5 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
                                 title="Delete invoice"
                               >
@@ -2021,7 +2031,7 @@ export default function Home() {
                                 <Button 
                                   size="sm" 
                                   variant="outline"
-                                  onClick={() => deleteReport(report.rowIndex)}
+                                  onClick={() => deleteReport(report.rowIndex, report.reportNumber)}
                                   className="h-8 px-2.5 text-red-600 border-red-200 hover:bg-red-50"
                                   title="Delete"
                                 >
@@ -2522,14 +2532,24 @@ export default function Home() {
             <div ref={stockReportRef} className="print:block stock-report-print">
               {/* Page 1: Report Header + Summary */}
               <div className="stock-report-page-1">
-                <div className="mb-8">
-                  <h1 className="text-3xl font-bold text-center text-black">{getCompanyName()}</h1>
-                  <h2 className="text-xl text-center text-black">Stock Report</h2>
-                  <p className="text-center text-lg font-medium text-black">
-                    Generated on: {formatDate(new Date().toISOString().split("T")[0])}
-                  </p>
-                  <p className="text-center text-xl font-bold mt-2 text-black">Customer: {customerName}</p>
-                </div>
+                <header className="stock-report-header mb-8">
+                  <h1 className="text-3xl font-bold text-center text-black tracking-tight">{getCompanyName()}</h1>
+                  <h2 className="stock-report-title text-center text-black">STOCK REPORT</h2>
+                  <div className="stock-report-meta">
+                    <div className="stock-report-meta-item">
+                      <span className="stock-report-meta-label">Customer</span>
+                      <span className="stock-report-meta-value">{customerName}</span>
+                    </div>
+                    <div className="stock-report-meta-item">
+                      <span className="stock-report-meta-label">Report No</span>
+                      <span className="stock-report-meta-value">{reportNumber || "—"}</span>
+                    </div>
+                    <div className="stock-report-meta-item">
+                      <span className="stock-report-meta-label">Date</span>
+                      <span className="stock-report-meta-value">{formatDate(new Date().toISOString().split("T")[0])}</span>
+                    </div>
+                  </div>
+                </header>
 
                 {/* Stock Summary Table - Page 1 only, larger font - white bg for printer ink saving */}
                 <Card className="mb-8 stock-summary-section overflow-hidden shadow-md border border-slate-200 bg-white">
@@ -2573,6 +2593,22 @@ export default function Home() {
                   )}
                 </CardContent>
               </Card>
+
+              {/* Signature strip - print only */}
+              <div className="signature-block hidden print:flex">
+                <div className="signature-line">
+                  <div className="line"></div>
+                  <span>Prepared by</span>
+                </div>
+                <div className="signature-line">
+                  <div className="line"></div>
+                  <span>Checked by</span>
+                </div>
+                <div className="signature-line">
+                  <div className="line"></div>
+                  <span>Received by</span>
+                </div>
+              </div>
               </div>
 
               {/* Page 2+: Detailed Breakdown */}
@@ -2585,41 +2621,59 @@ export default function Home() {
                   {materials.length === 0 ? (
                     <p className="text-center text-muted-foreground py-4">No materials added yet</p>
                   ) : (
-                    <div className="detailed-breakdown-grid">
-                      {getMaterialGroups().map((group) => (
-                        <div key={group.name} className="material-group">
-                          <h3 className="text-lg font-bold mb-2 text-black">{group.name}</h3>
-                          <table className="w-full border-collapse stock-report-table breakdown-table">
-                            <thead>
-                              <tr>
-                                <th className="font-bold text-base text-black">Date</th>
-                                <th className="font-bold text-base text-black">Quantity</th>
-                                <th className="font-bold text-base text-black">Unit Price (﷼)</th>
-                                <th className="font-bold text-base text-black">Total Price (﷼)</th>
+                    // Single continuous ledger table: paginates cleanly no matter
+                    // how many materials there are, and repeats its header row on
+                    // every printed page (a two-column grid breaks across pages).
+                    <table className="w-full border-collapse breakdown-ledger">
+                      <colgroup>
+                        <col style={{ width: "10%" }} />
+                        <col style={{ width: "38%" }} />
+                        <col style={{ width: "16%" }} />
+                        <col style={{ width: "18%" }} />
+                        <col style={{ width: "18%" }} />
+                      </colgroup>
+                      <thead>
+                        <tr>
+                          <th className="text-center font-bold text-black">S.No</th>
+                          <th className="text-left font-bold text-black">Date</th>
+                          <th className="text-right font-bold text-black">Quantity</th>
+                          <th className="text-right font-bold text-black">Unit Price (﷼)</th>
+                          <th className="text-right font-bold text-black">Total Price (﷼)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {getMaterialGroups().map((group, groupIndex) => (
+                          <React.Fragment key={group.name}>
+                            <tr className="group-header-row">
+                              <td colSpan={5} className="text-black font-bold">
+                                {groupIndex + 1}. {group.name}
+                              </td>
+                            </tr>
+                            {group.items.map((item, itemIndex) => (
+                              <tr key={item.id}>
+                                <td className="text-center text-black tabular-nums">{itemIndex + 1}</td>
+                                <td className="text-black">{formatDate(item.date)}</td>
+                                <td className="text-right text-black tabular-nums">{item.quantity.toFixed(2)}</td>
+                                <td className="text-right text-black tabular-nums">{item.unitPrice.toFixed(2)}</td>
+                                <td className="text-right text-black tabular-nums">{(item.quantity * item.unitPrice).toFixed(2)}</td>
                               </tr>
-                            </thead>
-                            <tbody>
-                              {group.items.map((item) => (
-                                <tr key={item.id}>
-                                  <td className="text-black">{formatDate(item.date)}</td>
-                                  <td className="text-right text-black">{item.quantity.toFixed(2)}</td>
-                                  <td className="text-right text-black">{item.unitPrice.toFixed(2)}</td>
-                                  <td className="text-right text-black">{(item.quantity * item.unitPrice).toFixed(2)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                            <tfoot>
-                              <tr className="group-total">
-                                <td className="font-bold text-black">Subtotal</td>
-                                <td className="text-right font-bold text-black">{group.totalQuantity.toFixed(2)}</td>
-                                <td className="text-right font-bold text-black">{group.averagePrice.toFixed(2)}</td>
-                                <td className="text-right font-bold text-black">{group.totalAmount.toFixed(2)}</td>
-                              </tr>
-                            </tfoot>
-                          </table>
-                        </div>
-                      ))}
-                    </div>
+                            ))}
+                            <tr className="group-total">
+                              <td colSpan={2} className="text-right font-bold text-black">Subtotal</td>
+                              <td className="text-right font-bold text-black tabular-nums">{group.totalQuantity.toFixed(2)}</td>
+                              <td className="text-right font-bold text-black tabular-nums">{group.averagePrice.toFixed(2)}</td>
+                              <td className="text-right font-bold text-black tabular-nums">{group.totalAmount.toFixed(2)}</td>
+                            </tr>
+                          </React.Fragment>
+                        ))}
+                        <tr className="ledger-grand-total">
+                          <td colSpan={2} className="text-right font-bold text-black">GRAND TOTAL</td>
+                          <td className="text-right font-bold text-black tabular-nums">{getStockGrandTotals().totalQuantity.toFixed(2)}</td>
+                          <td></td>
+                          <td className="text-right font-bold text-black tabular-nums">{getStockGrandTotals().totalAmount.toFixed(2)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
                   )}
                 </CardContent>
               </Card>

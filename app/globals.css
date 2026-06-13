@@ -178,33 +178,42 @@
     margin: 0 !important;
   }
 
-  /* Detailed breakdown - larger readable font */
+  /* Detailed breakdown - clean accounting style, horizontal rules only */
   .stock-report-page-2 table,
   .stock-report-page-2 .stock-report-table {
-    font-size: 13px !important;
+    font-size: 12px !important;
   }
 
   .stock-report-page-2 th,
   .stock-report-page-2 td {
-    padding: 10px 12px !important;
-    font-size: 13px !important;
-    border: 2px solid #334155 !important;
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+    border: none !important;
+    border-bottom: 0.5pt solid #cbd5e1 !important;
+  }
+
+  .stock-report-page-2 thead th {
+    border-bottom: 1.5pt solid #0f172a !important;
   }
 
   .stock-report-page-2 .material-group h3 {
-    font-size: 14px !important;
-    padding: 8px 10px !important;
+    font-size: 13px !important;
+    padding: 0 0 4px 0 !important;
     margin: 0 0 6px 0 !important;
     background-color: transparent !important;
     color: #000 !important;
-    font-weight: bold !important;
-    border: 2px solid #334155 !important;
-    border-radius: 4px !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+    border: none !important;
+    border-bottom: 1.5pt solid #0f172a !important;
+    border-radius: 0 !important;
   }
 
   .stock-report-page-2 tfoot tr.group-total td {
-    font-size: 13px !important;
-    padding: 10px 12px !important;
+    font-size: 12px !important;
+    padding: 6px 10px !important;
+    border-bottom: none !important;
+    border-top: 1.5pt solid #0f172a !important;
   }
 
   /* Summary table on page 1 - larger font */
@@ -220,8 +229,148 @@
   /* Fallback for other stock report tables */
   .stock-report-print th,
   .stock-report-print td {
-    border: 2px solid #334155;
+    border: none;
+    border-bottom: 0.5pt solid #cbd5e1;
     text-align: left;
+  }
+
+  /* Professional report header */
+  .stock-report-header h1 {
+    font-size: 20px !important;
+    margin-bottom: 2px !important;
+  }
+
+  .stock-report-title {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    letter-spacing: 3px !important;
+    margin: 2px 0 8px 0 !important;
+  }
+
+  .stock-report-meta {
+    display: flex !important;
+    justify-content: space-between !important;
+    border-top: 1.5pt solid #0f172a !important;
+    border-bottom: 0.5pt solid #94a3b8 !important;
+    padding: 6px 4px !important;
+    margin-top: 6px !important;
+  }
+
+  .stock-report-meta-item {
+    display: flex !important;
+    flex-direction: column !important;
+    text-align: left !important;
+  }
+
+  .stock-report-meta-label {
+    font-size: 8px !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #64748b !important;
+  }
+
+  .stock-report-meta-value {
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    color: #000 !important;
+  }
+
+  /* Detailed breakdown ledger - single table, paginates cleanly at any size */
+  .breakdown-ledger {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+  }
+
+  /* Repeat the column headers at the top of every printed page */
+  .breakdown-ledger thead {
+    display: table-header-group !important;
+  }
+
+  /* Never split a single row across two pages */
+  .breakdown-ledger tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .breakdown-ledger th {
+    border: none !important;
+    border-top: 1.5pt solid #0f172a !important;
+    border-bottom: 1pt solid #0f172a !important;
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+    color: #000 !important;
+    background: #ffffff !important;
+  }
+
+  .breakdown-ledger td {
+    border: none !important;
+    border-bottom: 0.5pt solid #e2e8f0 !important;
+    padding: 5px 10px !important;
+    font-size: 11px !important;
+    color: #000 !important;
+    background: #ffffff !important;
+  }
+
+  .breakdown-ledger .group-header-row td {
+    background: #f1f5f9 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    font-weight: 700 !important;
+    font-size: 12px !important;
+    padding: 6px 10px !important;
+    border-top: 1pt solid #0f172a !important;
+    border-bottom: 0.5pt solid #94a3b8 !important;
+  }
+
+  .breakdown-ledger tr.group-total td {
+    font-weight: 700 !important;
+    border-top: 0.75pt solid #475569 !important;
+    border-bottom: 1pt solid #0f172a !important;
+  }
+
+  .breakdown-ledger tr.ledger-grand-total td {
+    font-weight: 700 !important;
+    font-size: 12px !important;
+    border-top: 1.5pt solid #0f172a !important;
+    border-bottom: 3px double #0f172a !important;
+  }
+
+  /* Large summaries: let the summary table flow across pages naturally and
+     repeat its header, instead of forcing it onto one page (which breaks) */
+  .stock-summary-table thead {
+    display: table-header-group !important;
+  }
+
+  .stock-summary-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Signature strip at the bottom of page 1 */
+  .signature-block {
+    display: flex !important;
+    justify-content: space-between !important;
+    gap: 32px !important;
+    margin-top: 56px !important;
+    padding: 0 8px !important;
+  }
+
+  .signature-block .signature-line {
+    flex: 1;
+    text-align: center;
+  }
+
+  .signature-block .signature-line .line {
+    border-top: 1pt solid #000 !important;
+    margin-bottom: 4px !important;
+  }
+
+  .signature-block .signature-line span {
+    font-size: 9px !important;
+    color: #000 !important;
+    text-transform: uppercase;
+    letter-spacing: 1px;
   }
 
   /* Materials print - professional table styling */
@@ -436,29 +585,30 @@
     padding: 8px 0 !important;
   }
 
-  /* Material groups - professional card-style boxes */
+  /* Material groups - subtle containers, kept whole across pages */
   .material-group {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
-    margin-bottom: 16px !important;
-    padding: 12px !important;
-    border: 2px solid #334155 !important;
-    border-radius: 6px !important;
+    margin-bottom: 14px !important;
+    padding: 10px 12px !important;
+    border: 0.5pt solid #cbd5e1 !important;
+    border-radius: 4px !important;
     background: #ffffff !important;
   }
 
-  /* Breakdown tables - thick borders, professional */
+  /* Breakdown tables - horizontal rules only (accounting style) */
   .breakdown-table {
-    border: 2px solid #334155 !important;
-    border-radius: 6px !important;
+    border: none !important;
+    border-radius: 0 !important;
     overflow: hidden !important;
   }
 
   .breakdown-table th,
   .breakdown-table td {
-    font-size: 13px !important;
-    padding: 10px 12px !important;
-    border: 2px solid #334155 !important;
+    font-size: 12px !important;
+    padding: 6px 10px !important;
+    border: none !important;
+    border-bottom: 0.5pt solid #e2e8f0 !important;
   }
 
   .breakdown-table thead tr {
@@ -467,8 +617,8 @@
 
   .breakdown-table thead th {
     color: #000 !important;
-    font-weight: bold !important;
-    border-color: #334155 !important;
+    font-weight: 700 !important;
+    border-bottom: 1.5pt solid #0f172a !important;
   }
 
   .breakdown-table tbody tr {
@@ -481,28 +631,24 @@
 
   .breakdown-table tbody td {
     color: #000 !important;
-    border-color: #334155 !important;
   }
 
   .breakdown-table tfoot tr.group-total {
     background: transparent !important;
-    font-weight: bold !important;
-    border-top: 2px solid #334155 !important;
+    font-weight: 700 !important;
   }
 
   .breakdown-table tfoot tr.group-total td {
     color: #000 !important;
-    font-weight: bold !important;
-    border-color: #334155 !important;
+    font-weight: 700 !important;
+    border-bottom: none !important;
+    border-top: 1.5pt solid #0f172a !important;
   }
 
-  /* Stock report: Summary on page 1, detailed breakdown on page 2+ */
+  /* Stock report: Summary first, detailed breakdown starts on a fresh page.
+     No "keep on one page" forcing - huge tables must be allowed to flow. */
   .stock-report-page-1 {
     page-break-after: always !important;
-  }
-
-  .stock-summary-section {
-    page-break-inside: avoid !important;
   }
 
   .stock-report-page-2 {
@@ -610,22 +756,23 @@
     border: none !important;
   }
 
-  /* Stock summary - larger font, thick borders for print, no dark bg */
+  /* Stock summary - booktabs style: strong top/bottom rules, light row lines */
   .stock-summary-table th {
-    font-size: 13px !important;
-    padding: 10px 14px !important;
-    border-width: 2px !important;
-    border-color: #334155 !important;
+    font-size: 12px !important;
+    padding: 8px 12px !important;
+    border: none !important;
+    border-top: 1.5pt solid #0f172a !important;
+    border-bottom: 1pt solid #0f172a !important;
     background: transparent !important;
     color: #000 !important;
     font-weight: 700 !important;
   }
 
   .stock-summary-table td {
-    font-size: 13px !important;
-    padding: 10px 14px !important;
-    border-width: 2px !important;
-    border-color: #334155 !important;
+    font-size: 12px !important;
+    padding: 8px 12px !important;
+    border: none !important;
+    border-bottom: 0.5pt solid #e2e8f0 !important;
     background: transparent !important;
     color: #000 !important;
     font-weight: 500 !important;
@@ -633,6 +780,9 @@
 
   .stock-summary-table tfoot tr.grand-total td {
     font-size: 13px !important;
+    font-weight: 700 !important;
+    border-top: 1.5pt solid #0f172a !important;
+    border-bottom: 3px double #0f172a !important;
   }
 }
 
@@ -655,19 +805,90 @@
   page-break-before: always;
 }
 
-/* Material group - box style for screen */
+/* Professional report header (screen) */
+.stock-report-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 4px;
+  margin: 2px 0 12px 0;
+}
+
+.stock-report-meta {
+  display: flex;
+  justify-content: space-between;
+  border-top: 2px solid #0f172a;
+  border-bottom: 1px solid #94a3b8;
+  padding: 8px 6px;
+  margin-top: 8px;
+}
+
+.stock-report-meta-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.stock-report-meta-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #64748b;
+}
+
+.stock-report-meta-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #000;
+}
+
+/* Detailed breakdown ledger (screen) */
+.breakdown-ledger th {
+  border: none;
+  border-top: 2px solid #0f172a;
+  border-bottom: 2px solid #0f172a;
+  padding: 10px 12px;
+  font-size: 0.9375rem;
+}
+
+.breakdown-ledger td {
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px 12px;
+  font-size: 0.9375rem;
+}
+
+.breakdown-ledger .group-header-row td {
+  background: #f1f5f9;
+  font-size: 1rem;
+  padding: 10px 12px;
+  border-top: 2px solid #0f172a;
+  border-bottom: 1px solid #94a3b8;
+}
+
+.breakdown-ledger tr.group-total td {
+  border-top: 1px solid #475569;
+  border-bottom: 2px solid #0f172a;
+}
+
+.breakdown-ledger tr.ledger-grand-total td {
+  border-top: 2px solid #0f172a;
+  border-bottom: 6px double #0f172a;
+  font-size: 1rem;
+}
+
+/* Material group - subtle container for screen */
 .stock-report-page-2 .material-group {
   padding: 12px;
-  border: 2px solid #334155;
+  border: 1px solid #cbd5e1;
   border-radius: 6px;
   background: #ffffff;
   margin-bottom: 16px;
 }
 
 .stock-report-page-2 .material-group h3 {
-  border: 2px solid #334155;
-  border-radius: 4px;
-  padding: 8px 10px;
+  border: none;
+  border-bottom: 2px solid #0f172a;
+  border-radius: 0;
+  padding: 0 0 6px 0;
   margin-bottom: 8px;
 }
 
@@ -675,16 +896,20 @@
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 20px;
-  border: 2px solid #334155;
-  border-radius: 6px;
+  border: none;
   overflow: hidden;
 }
 
 .stock-report-table th,
 .stock-report-table td {
-  border: 2px solid #334155;
-  padding: 10px 12px;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px 12px;
   text-align: left;
+}
+
+.stock-report-table thead th {
+  border-bottom: 2px solid #0f172a;
 }
 
 .stock-report-table th {
@@ -727,7 +952,8 @@
 
 .stock-summary-table th,
 .stock-summary-table td {
-  border: 2px solid #334155;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
   padding: 12px 20px;
   font-size: 1rem;
 }
@@ -737,7 +963,8 @@
   color: #000;
   font-weight: 700;
   font-size: 1rem;
-  border-bottom: 2px solid #334155;
+  border-top: 2px solid #0f172a;
+  border-bottom: 2px solid #0f172a;
 }
 
 .stock-summary-table tbody tr:nth-child(even) {
